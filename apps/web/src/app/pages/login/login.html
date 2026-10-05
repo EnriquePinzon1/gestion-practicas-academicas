@@ -1,0 +1,52 @@
+<div class="login-page">
+  <div class="login-card">
+
+    <div class="brand">
+      <h1>Gestión de Prácticas Académicas</h1>
+      <p>Inicia sesión para continuar</p>
+    </div>
+
+    <form (ngSubmit)="login()">
+
+      <div class="field">
+        <label for="email">Correo electrónico</label>
+
+        <input
+          id="email"
+          name="email"
+          type="email"
+          [(ngModel)]="email"
+          placeholder="correo@ejemplo.com"
+          autocomplete="email"
+        />
+      </div>
+
+      <div class="field">
+        <label for="password">Contraseña</label>
+
+        <input
+          id="password"
+          name="password"
+          type="password"
+          [(ngModel)]="password"
+          placeholder="Ingrese su contraseña"
+          autocomplete="current-password"
+        />
+      </div>
+
+      <div *ngIf="errorMessage()" class="message error">
+ 	 {{ errorMessage() }}
+</div>
+
+<div *ngIf="successMessage()" class="message success">
+  {{ successMessage() }}
+</div>
+
+<button type="submit" [disabled]="loading()">
+  {{ loading() ? 'Ingresando...' : 'Iniciar sesión' }}
+</button>
+
+    </form>
+
+  </div>
+</div>
