@@ -2,12 +2,16 @@ import 'dotenv/config';
 
 import express from 'express';
 import { pool } from './database/database';
+import { supabaseAdmin } from './supabase/admin';
 
 const app = express();
 
 app.use(express.json());
 
-// Health público interno del microservicio
+// ========================================================
+// HEALTH
+// ========================================================
+
 app.get('/api', (_req, res) => {
   res.json({
     service: 'user-service',
@@ -15,7 +19,10 @@ app.get('/api', (_req, res) => {
   });
 });
 
-// Comprobación de conexión a PostgreSQL
+// ========================================================
+// DATABASE HEALTH
+// ========================================================
+
 app.get('/api/database/health', async (_req, res) => {
   try {
     const result = await pool.query(
@@ -37,7 +44,55 @@ app.get('/api/database/health', async (_req, res) => {
   }
 });
 
-// Lista inicial de usuarios
+// ========================================================
+// PERFIL INTERNO POR AUTH USER ID
+// ========================================================
+
+app.get(
+  '/api/internal/users/by-auth/:authUserId',
+  async (req, res) => {
+    try {
+      const { authUserId } = req.params;
+
+      const result = await pool.query(
+        `
+        SELECT
+          u.id_usuario,
+          u.auth_user_id,
+          u.nombres,
+          u.apellidos,
+          u.correo,
+          u.estado,
+          r.nombre AS rol
+        FROM users.usuario u
+        INNER JOIN users.rol r
+          ON r.id_rol = u.id_rol
+        WHERE u.auth_user_id = $1;
+        `,
+        [authUserId]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({
+          message: 'Perfil de usuario no encontrado',
+        });
+      }
+
+      return res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error querying user profile:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible consultar el perfil',
+      });
+    }
+  }
+);
+
+// ========================================================
+// CONSULTAR USUARIOS
+// ========================================================
+
 app.get('/api/users', async (_req, res) => {
   try {
     const result = await pool.query(`
@@ -69,11 +124,292 @@ app.get('/api/users', async (_req, res) => {
     });
   }
 });
+// ========================================================
+// CU01 - REGISTRAR USUARIO
+// ========================================================
+
+app.post('/api/users', async (req, res) => {
+  const {
+    rol,
+    nombres,
+    apellidos,
+    tipo_documento,
+    numero_documento,
+    correo,
+    telefono,
+    codigo_estudiante,
+    semestre,
+    id_programa,
+  } = req.body;
+
+  // ------------------------------------------------------
+  // Validaciones básicas
+  // ------------------------------------------------------
+
+  if (
+    !rol ||
+    !nombres ||
+    !apellidos ||
+    !tipo_documento ||
+    !numero_documento ||
+    !correo
+  ) {
+    return res.status(400).json({
+      message: 'Existen campos obligatorios sin diligenciar',
+    });
+  }
+
+  const rolesPermitidos = [
+    'COORDINADOR',
+    'DOCENTE',
+    'ESTUDIANTE',
+  ];
+
+  if (!rolesPermitidos.includes(rol)) {
+    return res.status(400).json({
+      message: 'El tipo de usuario no es válido',
+    });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailRegex.test(correo)) {
+    return res.status(400).json({
+      message: 'El formato del correo no es válido',
+    });
+  }
+
+  if (
+    rol === 'ESTUDIANTE' &&
+    (!codigo_estudiante || !semestre || !id_programa)
+  ) {
+    return res.status(400).json({
+      message:
+        'Para un estudiante son obligatorios código, semestre y programa académico',
+    });
+  }
+
+  const client = await pool.connect();
+
+  let authUserId: string | null = null;
+
+  try {
+    // ----------------------------------------------------
+    // Comprobar duplicados antes de crear Auth
+    // ----------------------------------------------------
+
+    const duplicateResult = await client.query(
+      `
+      SELECT
+        correo,
+        numero_documento
+      FROM users.usuario
+      WHERE correo = $1
+         OR numero_documento = $2;
+      `,
+      [correo.trim().toLowerCase(), numero_documento.trim()]
+    );
+
+    if (duplicateResult.rowCount !== 0) {
+      return res.status(409).json({
+        message:
+          'Ya existe un usuario con el correo o documento ingresado',
+      });
+    }
+
+    if (rol === 'ESTUDIANTE') {
+      const studentDuplicate = await client.query(
+        `
+        SELECT id_estudiante
+        FROM users.estudiante
+        WHERE codigo_estudiante = $1;
+        `,
+        [codigo_estudiante.trim()]
+      );
+
+      if (studentDuplicate.rowCount !== 0) {
+        return res.status(409).json({
+          message:
+            'Ya existe un estudiante con el código ingresado',
+        });
+      }
+    }
+
+    // ----------------------------------------------------
+    // Obtener rol
+    // ----------------------------------------------------
+
+    const roleResult = await client.query(
+      `
+      SELECT id_rol
+      FROM users.rol
+      WHERE nombre = $1;
+      `,
+      [rol]
+    );
+
+    if (roleResult.rowCount === 0) {
+      return res.status(400).json({
+        message: 'El rol indicado no existe',
+      });
+    }
+
+    const idRol = roleResult.rows[0].id_rol;
+
+    // ----------------------------------------------------
+    // Crear/invitar usuario en Supabase Auth
+    // ----------------------------------------------------
+
+    const {
+      data: inviteData,
+      error: inviteError,
+    } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      correo.trim().toLowerCase(),
+      {
+        data: {
+          nombres: nombres.trim(),
+          apellidos: apellidos.trim(),
+          rol,
+        },
+      }
+    );
+
+    if (inviteError || !inviteData.user) {
+      console.error('Supabase invite error:', inviteError);
+
+      return res.status(400).json({
+        message:
+          inviteError?.message ??
+          'No fue posible crear la cuenta de autenticación',
+      });
+    }
+
+    authUserId = inviteData.user.id;
+
+    // ----------------------------------------------------
+    // Transacción PostgreSQL
+    // ----------------------------------------------------
+
+    await client.query('BEGIN');
+
+    const userResult = await client.query(
+      `
+      INSERT INTO users.usuario (
+        auth_user_id,
+        id_rol,
+        nombres,
+        apellidos,
+        tipo_documento,
+        numero_documento,
+        correo,
+        telefono,
+        estado
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, 'ACTIVO'
+      )
+      RETURNING id_usuario;
+      `,
+      [
+        authUserId,
+        idRol,
+        nombres.trim(),
+        apellidos.trim(),
+        tipo_documento.trim(),
+        numero_documento.trim(),
+        correo.trim().toLowerCase(),
+        telefono?.trim() || null,
+      ]
+    );
+
+    const idUsuario = userResult.rows[0].id_usuario;
+
+    // ----------------------------------------------------
+    // Datos específicos por rol
+    // ----------------------------------------------------
+
+    if (rol === 'DOCENTE') {
+      await client.query(
+        `
+        INSERT INTO users.docente_asesor (
+          id_usuario
+        )
+        VALUES ($1);
+        `,
+        [idUsuario]
+      );
+    }
+
+    if (rol === 'ESTUDIANTE') {
+      await client.query(
+        `
+        INSERT INTO users.estudiante (
+          id_usuario,
+          codigo_estudiante,
+          semestre,
+          id_programa
+        )
+        VALUES ($1, $2, $3, $4);
+        `,
+        [
+          idUsuario,
+          codigo_estudiante.trim(),
+          Number(semestre),
+          Number(id_programa),
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    return res.status(201).json({
+      message: 'Usuario registrado correctamente',
+      data: {
+        id_usuario: idUsuario,
+        auth_user_id: authUserId,
+        rol,
+        nombres,
+        apellidos,
+        correo: correo.trim().toLowerCase(),
+        estado: 'ACTIVO',
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+
+    console.error('Error creating user:', error);
+
+    // Si Auth se creó pero PostgreSQL falló,
+    // eliminamos la cuenta para evitar inconsistencias.
+    if (authUserId) {
+      const { error: deleteError } =
+        await supabaseAdmin.auth.admin.deleteUser(
+          authUserId
+        );
+
+      if (deleteError) {
+        console.error(
+          'Error rolling back Supabase Auth user:',
+          deleteError
+        );
+      }
+    }
+
+    return res.status(500).json({
+      message: 'No fue posible registrar el usuario',
+    });
+  } finally {
+    client.release();
+  }
+});
 
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {
-  console.log(`User Service listening at http://localhost:${port}/api`);
+  console.log(
+    `User Service listening at http://localhost:${port}/api`
+  );
 });
 
 server.on('error', console.error);
