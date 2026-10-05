@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
+import { Router } from '@angular/router';
 
 interface Usuario {
   id_usuario: number;
@@ -31,9 +32,12 @@ export class Users {
   roleFilter = signal('');
   statusFilter = signal('');
 
-  constructor(private readonly api: ApiService) {
-    this.loadUsers();
-  }
+  constructor(
+  private readonly api: ApiService,
+  private readonly router: Router
+) {
+  this.loadUsers();
+}
 
   filteredUsers = computed(() => {
     const search = this.search().trim().toLowerCase();
@@ -80,8 +84,8 @@ export class Users {
   }
 
   newUser() {
-    console.log('Nuevo usuario');
-  }
+  this.router.navigate(['/usuarios/nuevo']);
+}
 
   editUser(usuario: Usuario) {
     console.log('Editar usuario:', usuario);

@@ -322,6 +322,46 @@ app.get(
 // ========================================================
 // SERVER
 // ========================================================
+// ========================================================
+// CU01 - REGISTRAR USUARIO
+// Solo Coordinador activo
+// ========================================================
+
+app.post(
+  '/api/users',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3334/api/users',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json().catch(() => ({
+        message: 'Respuesta inválida de User Service',
+      }));
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error(
+        'Error creating user through user-service:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'No fue posible comunicarse con User Service',
+      });
+    }
+  }
+);
 
 const port = process.env.PORT || 3333;
 

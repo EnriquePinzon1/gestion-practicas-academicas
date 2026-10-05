@@ -23,22 +23,54 @@ export class ApiService {
   async get<T>(endpoint: string): Promise<T> {
     const token = await this.getToken();
 
-    const response = await fetch(`${this.gatewayUrl}${endpoint}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await fetch(
+      `${this.gatewayUrl}${endpoint}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    return this.handleResponse<T>(response);
+  }
+
+  async post<T>(
+    endpoint: string,
+    body: unknown
+  ): Promise<T> {
+    const token = await this.getToken();
+
+    const response = await fetch(
+      `${this.gatewayUrl}${endpoint}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    return this.handleResponse<T>(response);
+  }
+
+  private async handleResponse<T>(
+    response: Response
+  ): Promise<T> {
+    const body = await response
+      .json()
+      .catch(() => null);
 
     if (!response.ok) {
-      const body = await response.json().catch(() => null);
-
       throw new Error(
         body?.message ?? `Error HTTP ${response.status}`
       );
     }
 
-    return response.json() as Promise<T>;
+    return body as T;
   }
 }

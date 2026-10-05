@@ -2,6 +2,7 @@ import { Route } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { Dashboard } from './pages/dashboard/dashboard';
 import { Login } from './pages/login/login';
+import { UserForm } from './pages/users/user-form';
 import { Users } from './pages/users/users';
 
 export const appRoutes: Route[] = [
@@ -17,6 +18,11 @@ export const appRoutes: Route[] = [
   {
     path: 'usuarios',
     component: Users,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'usuarios/nuevo',
+    component: UserForm,
     canActivate: [authGuard],
   },
   {

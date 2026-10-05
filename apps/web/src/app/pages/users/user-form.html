@@ -1,0 +1,144 @@
+<div class="page">
+  <div class="card">
+
+    <div class="header">
+      <div>
+        <h1>Registrar Usuario</h1>
+        <p>Ingrese la información del nuevo usuario.</p>
+      </div>
+    </div>
+
+    <form (ngSubmit)="save()">
+
+      <div class="field">
+        <label for="rol">Tipo de usuario *</label>
+
+        <select
+          id="rol"
+          name="rol"
+          [(ngModel)]="rol"
+        >
+          <option value="DOCENTE">
+            Docente Asesor
+          </option>
+
+          <option value="COORDINADOR">
+            Coordinador de Prácticas
+          </option>
+
+          <option value="ESTUDIANTE" disabled>
+            Estudiante — programa pendiente de configurar
+          </option>
+        </select>
+      </div>
+
+      <div class="grid">
+
+        <div class="field">
+          <label for="nombres">Nombres *</label>
+          <input
+            id="nombres"
+            name="nombres"
+            [(ngModel)]="nombres"
+          />
+        </div>
+
+        <div class="field">
+          <label for="apellidos">Apellidos *</label>
+          <input
+            id="apellidos"
+            name="apellidos"
+            [(ngModel)]="apellidos"
+          />
+        </div>
+
+        <div class="field">
+          <label for="tipoDocumento">
+            Tipo de documento *
+          </label>
+
+          <select
+            id="tipoDocumento"
+            name="tipoDocumento"
+            [(ngModel)]="tipoDocumento"
+          >
+            <option value="CC">CC</option>
+            <option value="TI">TI</option>
+            <option value="CE">CE</option>
+            <option value="PASAPORTE">Pasaporte</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="numeroDocumento">
+            Número de documento *
+          </label>
+
+          <input
+            id="numeroDocumento"
+            name="numeroDocumento"
+            [(ngModel)]="numeroDocumento"
+          />
+        </div>
+
+        <div class="field">
+          <label for="correo">Correo *</label>
+
+          <input
+            id="correo"
+            name="correo"
+            type="email"
+            [(ngModel)]="correo"
+          />
+        </div>
+
+        <div class="field">
+          <label for="telefono">Teléfono</label>
+
+          <input
+            id="telefono"
+            name="telefono"
+            [(ngModel)]="telefono"
+          />
+        </div>
+
+      </div>
+
+      @if (errorMessage()) {
+        <div class="message error">
+          {{ errorMessage() }}
+        </div>
+      }
+
+      @if (successMessage()) {
+        <div class="message success">
+          {{ successMessage() }}
+        </div>
+      }
+
+      <div class="buttons">
+        <button
+          type="button"
+          class="secondary"
+          (click)="cancel()"
+        >
+          Cancelar
+        </button>
+
+        <button
+          type="submit"
+          class="primary"
+          [disabled]="loading()"
+        >
+          {{
+            loading()
+              ? 'Guardando...'
+              : 'Guardar'
+          }}
+        </button>
+      </div>
+
+    </form>
+
+  </div>
+</div>
