@@ -58,6 +58,27 @@ export class ApiService {
     return this.handleResponse<T>(response);
   }
 
+async patch<T>(
+  endpoint: string,
+  body: unknown
+): Promise<T> {
+  const token = await this.getToken();
+
+  const response = await fetch(
+    `${this.gatewayUrl}${endpoint}`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  return this.handleResponse<T>(response);
+}
+
   private async handleResponse<T>(
     response: Response
   ): Promise<T> {

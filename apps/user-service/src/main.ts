@@ -403,6 +403,63 @@ app.post('/api/users', async (req, res) => {
     client.release();
   }
 });
+// ========================================================
+// CU01 - CAMBIAR ESTADO DE USUARIO
+// ========================================================
+
+app.patch('/api/users/:id/status', async (req, res) => {
+  const idUsuario = Number(req.params.id);
+  const { estado } = req.body;
+
+  if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+    return res.status(400).json({
+      message: 'El identificador del usuario no es válido',
+    });
+  }
+
+  if (!['ACTIVO', 'INACTIVO'].includes(estado)) {
+    return res.status(400).json({
+      message: 'El estado debe ser ACTIVO o INACTIVO',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE users.usuario
+      SET estado = $1
+      WHERE id_usuario = $2
+      RETURNING
+        id_usuario,
+        nombres,
+        apellidos,
+        correo,
+        estado;
+      `,
+      [estado, idUsuario]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    return res.json({
+      message:
+        estado === 'ACTIVO'
+          ? 'Usuario activado correctamente'
+          : 'Usuario desactivado correctamente',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error changing user status:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible cambiar el estado del usuario',
+    });
+  }
+});
 
 const port = process.env.PORT || 3334;
 

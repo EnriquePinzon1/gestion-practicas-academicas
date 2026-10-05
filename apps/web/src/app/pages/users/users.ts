@@ -91,7 +91,42 @@ export class Users {
     console.log('Editar usuario:', usuario);
   }
 
-  toggleStatus(usuario: Usuario) {
-    console.log('Cambiar estado:', usuario);
+  async toggleStatus(usuario: Usuario) {
+  const nuevoEstado =
+    usuario.estado === 'ACTIVO'
+      ? 'INACTIVO'
+      : 'ACTIVO';
+
+  const accion =
+    nuevoEstado === 'INACTIVO'
+      ? 'desactivar'
+      : 'activar';
+
+  const confirmado = window.confirm(
+    `¿Está seguro de que desea ${accion} a ${usuario.nombres} ${usuario.apellidos}?`
+  );
+
+  if (!confirmado) {
+    return;
   }
+
+  this.errorMessage.set('');
+
+  try {
+    await this.api.patch(
+      `/users/${usuario.id_usuario}/status`,
+      {
+        estado: nuevoEstado,
+      }
+    );
+
+    await this.loadUsers();
+  } catch (error) {
+    this.errorMessage.set(
+      error instanceof Error
+        ? error.message
+        : 'No fue posible cambiar el estado del usuario.'
+    );
+  }
+}
 }
