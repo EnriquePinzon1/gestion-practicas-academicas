@@ -1,0 +1,9 @@
+autoInstallPeers: true
+allowBuilds:
+  '@parcel/watcher': true
+  core-js-pure: true
+  esbuild: false
+  lmdb: false
+  msgpackr-extract: false
+  nx: true
+  unrs-resolver: false
