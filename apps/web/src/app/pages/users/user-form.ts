@@ -23,6 +23,11 @@ interface UsuarioDetalle {
   rol: string;
 }
 
+interface Programa {
+  id_programa: number;
+  nombre: string;
+}
+
 @Component({
   selector: 'app-user-form',
   standalone: true,
@@ -39,6 +44,8 @@ export class UserForm implements OnInit {
   errorMessage = signal('');
   successMessage = signal('');
 
+  programas = signal<Programa[]>([]);
+
   rol = 'DOCENTE';
 
   nombres = '';
@@ -47,6 +54,10 @@ export class UserForm implements OnInit {
   numeroDocumento = '';
   correo = '';
   telefono = '';
+
+  codigoEstudiante = '';
+  semestre: number | null = null;
+  idPrograma: number | null = null;
 
   constructor(
     private readonly api: ApiService,
@@ -61,6 +72,24 @@ export class UserForm implements OnInit {
       this.idUsuario = Number(id);
       this.editMode.set(true);
       this.loadUser();
+    } else {
+      this.loadPrograms();
+    }
+  }
+
+  async loadPrograms() {
+    try {
+      const response = await this.api.get<{
+        data: Programa[];
+      }>('/programs');
+
+      this.programas.set(response.data);
+    } catch (error) {
+      this.errorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible consultar los programas académicos.'
+      );
     }
   }
 
@@ -111,6 +140,36 @@ export class UserForm implements OnInit {
       return;
     }
 
+    if (
+      !this.editMode() &&
+      (
+        !this.rol ||
+        !this.tipoDocumento ||
+        !this.numeroDocumento.trim() ||
+        !this.correo.trim()
+      )
+    ) {
+      this.errorMessage.set(
+        'Complete todos los campos obligatorios.'
+      );
+      return;
+    }
+
+    if (
+      !this.editMode() &&
+      this.rol === 'ESTUDIANTE' &&
+      (
+        !this.codigoEstudiante.trim() ||
+        !this.semestre ||
+        !this.idPrograma
+      )
+    ) {
+      this.errorMessage.set(
+        'Código, programa académico y semestre son obligatorios para el estudiante.'
+      );
+      return;
+    }
+
     this.loading.set(true);
 
     try {
@@ -128,18 +187,6 @@ export class UserForm implements OnInit {
           'Usuario actualizado correctamente.'
         );
       } else {
-        if (
-          !this.rol ||
-          !this.tipoDocumento ||
-          !this.numeroDocumento.trim() ||
-          !this.correo.trim()
-        ) {
-          this.errorMessage.set(
-            'Complete todos los campos obligatorios.'
-          );
-          return;
-        }
-
         await this.api.post('/users', {
           rol: this.rol,
           nombres: this.nombres,
@@ -148,6 +195,15 @@ export class UserForm implements OnInit {
           numero_documento: this.numeroDocumento,
           correo: this.correo,
           telefono: this.telefono || null,
+
+          ...(this.rol === 'ESTUDIANTE'
+            ? {
+                codigo_estudiante:
+                  this.codigoEstudiante,
+                semestre: this.semestre,
+                id_programa: this.idPrograma,
+              }
+            : {}),
         });
 
         this.successMessage.set(

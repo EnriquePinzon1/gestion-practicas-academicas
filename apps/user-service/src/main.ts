@@ -189,6 +189,45 @@ app.post('/api/users', async (req, res) => {
     });
   }
 
+if (rol === 'ESTUDIANTE') {
+  try {
+    const programResponse = await fetch(
+      'http://localhost:3335/api/programs'
+    );
+
+    if (!programResponse.ok) {
+      return res.status(503).json({
+        message:
+          'No fue posible validar el programa académico',
+      });
+    }
+
+    const programData = await programResponse.json();
+
+    const programExists = programData.data.some(
+      (program: { id_programa: number }) =>
+        program.id_programa === Number(id_programa)
+    );
+
+    if (!programExists) {
+      return res.status(400).json({
+        message:
+          'El programa académico seleccionado no existe',
+      });
+    }
+  } catch (error) {
+    console.error(
+      'Error validating academic program:',
+      error
+    );
+
+    return res.status(503).json({
+      message:
+        'No fue posible comunicarse con Practice Service',
+    });
+  }
+}
+
   const client = await pool.connect();
 
   let authUserId: string | null = null;

@@ -33,26 +33,23 @@
         </label>
 
         <select
-          id="rol"
-          name="rol"
-          [(ngModel)]="rol"
-          [disabled]="editMode()"
-        >
-          <option value="DOCENTE">
-            Docente Asesor
-          </option>
+  id="rol"
+  name="rol"
+  [(ngModel)]="rol"
+  [disabled]="editMode()"
+>
+  <option value="DOCENTE">
+    Docente Asesor
+  </option>
 
-          <option value="COORDINADOR">
-            Coordinador de Prácticas
-          </option>
+  <option value="COORDINADOR">
+    Coordinador de Prácticas
+  </option>
 
-          <option
-            value="ESTUDIANTE"
-            [disabled]="!editMode()"
-          >
-            Estudiante
-          </option>
-        </select>
+  <option value="ESTUDIANTE">
+    Estudiante
+  </option>
+</select>
       </div>
 
       <div class="grid">
@@ -141,6 +138,72 @@
         </div>
 
       </div>
+
+@if (!editMode() && rol === 'ESTUDIANTE') {
+  <div class="academic-section">
+
+    <h2>Información académica</h2>
+
+    <div class="grid">
+
+      <div class="field">
+        <label for="codigoEstudiante">
+          Código de estudiante *
+        </label>
+
+        <input
+          id="codigoEstudiante"
+          name="codigoEstudiante"
+          [(ngModel)]="codigoEstudiante"
+        />
+      </div>
+
+      <div class="field">
+        <label for="programa">
+          Programa académico *
+        </label>
+
+        <select
+          id="programa"
+          name="programa"
+          [(ngModel)]="idPrograma"
+        >
+          <option [ngValue]="null">
+            Seleccione un programa
+          </option>
+
+          @for (
+            programa of programas();
+            track programa.id_programa
+          ) {
+            <option
+              [ngValue]="programa.id_programa"
+            >
+              {{ programa.nombre }}
+            </option>
+          }
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="semestre">
+          Semestre *
+        </label>
+
+        <input
+          id="semestre"
+          name="semestre"
+          type="number"
+          min="1"
+          max="20"
+          [(ngModel)]="semestre"
+        />
+      </div>
+
+    </div>
+
+  </div>
+}
 
       @if (editMode()) {
         <div class="info-message">

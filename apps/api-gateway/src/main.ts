@@ -471,6 +471,34 @@ app.patch(
     }
   }
 );
+// ========================================================
+// CONSULTAR PROGRAMAS ACADÉMICOS
+// Solo Coordinador activo
+// ========================================================
+
+app.get(
+  '/api/programs',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/programs'
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error querying programs:', error);
+
+      return res.status(503).json({
+        message:
+          'No fue posible comunicarse con Practice Service',
+      });
+    }
+  }
+);
 
 // AQUÍ empieza el servidor
 const port = process.env.PORT || 3333;
