@@ -50,6 +50,56 @@
         "${workspaceFolder}/apps/user-service/dist/**/*.(m|c|)js",
         "!**/node_modules/**"
       ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug practice-service with Nx",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "nx",
+        "serve",
+        "practice-service"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9231"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/practice-service/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug activity-service with Nx",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "nx",
+        "serve",
+        "activity-service"
+      ],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9232"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/activity-service/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
     }
   ]
 }
