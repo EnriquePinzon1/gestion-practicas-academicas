@@ -573,6 +573,8 @@ app.patch('/api/users/:id', async (req, res) => {
     nombres,
     apellidos,
     telefono,
+    semestre,
+    id_programa,
   } = req.body;
 
   if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
@@ -587,8 +589,102 @@ app.patch('/api/users/:id', async (req, res) => {
     });
   }
 
+  const client = await pool.connect();
+
+  let transactionStarted = false;
+
   try {
-    const result = await pool.query(
+    // ----------------------------------------------------
+    // Consultar rol actual del usuario
+    // ----------------------------------------------------
+
+    const userProfile = await client.query(
+      `
+      SELECT
+        u.id_usuario,
+        r.nombre AS rol
+      FROM users.usuario u
+      INNER JOIN users.rol r
+        ON r.id_rol = u.id_rol
+      WHERE u.id_usuario = $1;
+      `,
+      [idUsuario]
+    );
+
+    if (userProfile.rowCount === 0) {
+      return res.status(404).json({
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    const rol = userProfile.rows[0].rol;
+
+    // ----------------------------------------------------
+    // Validaciones específicas del estudiante
+    // ----------------------------------------------------
+
+    if (rol === 'ESTUDIANTE') {
+      const semestreNumero = Number(semestre);
+      const programaNumero = Number(id_programa);
+
+      if (
+        !Number.isInteger(semestreNumero) ||
+        semestreNumero <= 0 ||
+        semestreNumero > 20
+      ) {
+        return res.status(400).json({
+          message: 'El semestre ingresado no es válido',
+        });
+      }
+
+      if (
+        !Number.isInteger(programaNumero) ||
+        programaNumero <= 0
+      ) {
+        return res.status(400).json({
+          message:
+            'Debe seleccionar un programa académico válido',
+        });
+      }
+
+      // Validar que el programa realmente exista
+      // en Practice Service.
+      const programResponse = await fetch(
+        'http://localhost:3335/api/programs'
+      );
+
+      if (!programResponse.ok) {
+        return res.status(503).json({
+          message:
+            'No fue posible validar el programa académico',
+        });
+      }
+
+      const programData = await programResponse.json();
+
+      const programExists =
+        Array.isArray(programData.data) &&
+        programData.data.some(
+          (program: { id_programa: number }) =>
+            program.id_programa === programaNumero
+        );
+
+      if (!programExists) {
+        return res.status(400).json({
+          message:
+            'El programa académico seleccionado no existe',
+        });
+      }
+    }
+
+    // ----------------------------------------------------
+    // Transacción
+    // ----------------------------------------------------
+
+    await client.query('BEGIN');
+    transactionStarted = true;
+
+    const userResult = await client.query(
       `
       UPDATE users.usuario
       SET
@@ -612,24 +708,71 @@ app.patch('/api/users/:id', async (req, res) => {
       ]
     );
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({
-        message: 'Usuario no encontrado',
-      });
+    // ----------------------------------------------------
+    // Actualizar información académica
+    // ----------------------------------------------------
+
+    let studentData = null;
+
+    if (rol === 'ESTUDIANTE') {
+      const studentResult = await client.query(
+        `
+        UPDATE users.estudiante
+        SET
+          semestre = $1,
+          id_programa = $2
+        WHERE id_usuario = $3
+        RETURNING
+          codigo_estudiante,
+          semestre,
+          id_programa;
+        `,
+        [
+          Number(semestre),
+          Number(id_programa),
+          idUsuario,
+        ]
+      );
+
+      if (studentResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(409).json({
+          message:
+            'El usuario no tiene un perfil de estudiante asociado',
+        });
+      }
+
+      studentData = studentResult.rows[0];
     }
+
+    await client.query('COMMIT');
+    transactionStarted = false;
 
     return res.json({
       message: 'Usuario actualizado correctamente',
-      data: result.rows[0],
+      data: {
+        ...userResult.rows[0],
+        rol,
+        ...(studentData ?? {}),
+      },
     });
   } catch (error) {
+    if (transactionStarted) {
+      await client.query('ROLLBACK');
+    }
+
     console.error('Error updating user:', error);
 
     return res.status(500).json({
       message: 'No fue posible actualizar el usuario',
     });
+  } finally {
+    client.release();
   }
 });
+
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {

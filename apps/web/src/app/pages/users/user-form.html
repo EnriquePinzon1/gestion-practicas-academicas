@@ -139,7 +139,7 @@
 
       </div>
 
-@if (!editMode() && rol === 'ESTUDIANTE') {
+@if (rol === 'ESTUDIANTE') {
   <div class="academic-section">
 
     <h2>Información académica</h2>
@@ -152,10 +152,11 @@
         </label>
 
         <input
-          id="codigoEstudiante"
-          name="codigoEstudiante"
-          [(ngModel)]="codigoEstudiante"
-        />
+  id="codigoEstudiante"
+  name="codigoEstudiante"
+  [(ngModel)]="codigoEstudiante"
+  [disabled]="editMode()"
+/>
       </div>
 
       <div class="field">

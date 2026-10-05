@@ -21,6 +21,10 @@ interface UsuarioDetalle {
   telefono: string | null;
   estado: string;
   rol: string;
+
+codigo_estudiante: string | null;
+semestre: number | null;
+id_programa: number | null;
 }
 
 interface Programa {
@@ -66,16 +70,18 @@ export class UserForm implements OnInit {
   ) {}
 
   ngOnInit() {
-    const id = this.route.snapshot.paramMap.get('id');
+  const id = this.route.snapshot.paramMap.get('id');
 
-    if (id) {
-      this.idUsuario = Number(id);
-      this.editMode.set(true);
-      this.loadUser();
-    } else {
-      this.loadPrograms();
-    }
+  // Los programas se necesitan tanto al crear
+  // como al editar estudiantes.
+  this.loadPrograms();
+
+  if (id) {
+    this.idUsuario = Number(id);
+    this.editMode.set(true);
+    this.loadUser();
   }
+}
 
   async loadPrograms() {
     try {
@@ -115,6 +121,16 @@ export class UserForm implements OnInit {
       this.numeroDocumento = usuario.numero_documento;
       this.correo = usuario.correo;
       this.telefono = usuario.telefono ?? '';
+if (usuario.rol === 'ESTUDIANTE') {
+  this.codigoEstudiante =
+    usuario.codigo_estudiante ?? '';
+
+  this.semestre =
+    usuario.semestre ?? null;
+
+  this.idPrograma =
+    usuario.id_programa ?? null;
+}
     } catch (error) {
       this.errorMessage.set(
         error instanceof Error
@@ -173,20 +189,38 @@ export class UserForm implements OnInit {
     this.loading.set(true);
 
     try {
-      if (this.editMode() && this.idUsuario) {
-        await this.api.patch(
-          `/users/${this.idUsuario}`,
-          {
-            nombres: this.nombres,
-            apellidos: this.apellidos,
-            telefono: this.telefono || null,
-          }
-        );
+   if (this.editMode() && this.idUsuario) {
+  if (
+    this.rol === 'ESTUDIANTE' &&
+    (!this.semestre || !this.idPrograma)
+  ) {
+    this.errorMessage.set(
+      'Programa académico y semestre son obligatorios.'
+    );
 
-        this.successMessage.set(
-          'Usuario actualizado correctamente.'
-        );
-      } else {
+    return;
+  }
+
+  await this.api.patch(
+    `/users/${this.idUsuario}`,
+    {
+      nombres: this.nombres,
+      apellidos: this.apellidos,
+      telefono: this.telefono || null,
+
+      ...(this.rol === 'ESTUDIANTE'
+        ? {
+            semestre: this.semestre,
+            id_programa: this.idPrograma,
+          }
+        : {}),
+    }
+  );
+
+  this.successMessage.set(
+    'Usuario actualizado correctamente.'
+  );
+} else {
         await this.api.post('/users', {
           rol: this.rol,
           nombres: this.nombres,
