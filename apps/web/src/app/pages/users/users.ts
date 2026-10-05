@@ -88,8 +88,12 @@ export class Users {
 }
 
   editUser(usuario: Usuario) {
-    console.log('Editar usuario:', usuario);
-  }
+  this.router.navigate([
+    '/usuarios',
+    usuario.id_usuario,
+    'editar',
+  ]);
+}
 
   async toggleStatus(usuario: Usuario) {
   const nuevoEstado =

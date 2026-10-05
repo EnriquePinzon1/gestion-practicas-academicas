@@ -460,7 +460,127 @@ app.patch('/api/users/:id/status', async (req, res) => {
     });
   }
 });
+// ========================================================
+// CU01 - CONSULTAR USUARIO POR ID
+// ========================================================
 
+app.get('/api/users/:id', async (req, res) => {
+  const idUsuario = Number(req.params.id);
+
+  if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+    return res.status(400).json({
+      message: 'El identificador del usuario no es válido',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        u.id_usuario,
+        u.auth_user_id,
+        u.nombres,
+        u.apellidos,
+        u.tipo_documento,
+        u.numero_documento,
+        u.correo,
+        u.telefono,
+        u.estado,
+        r.nombre AS rol
+      FROM users.usuario u
+      INNER JOIN users.rol r
+        ON r.id_rol = u.id_rol
+      WHERE u.id_usuario = $1;
+      `,
+      [idUsuario]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    return res.json({
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error querying user:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar el usuario',
+    });
+  }
+});
+
+// ========================================================
+// CU01 - ACTUALIZAR USUARIO
+// ========================================================
+
+app.patch('/api/users/:id', async (req, res) => {
+  const idUsuario = Number(req.params.id);
+
+  const {
+    nombres,
+    apellidos,
+    telefono,
+  } = req.body;
+
+  if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+    return res.status(400).json({
+      message: 'El identificador del usuario no es válido',
+    });
+  }
+
+  if (!nombres?.trim() || !apellidos?.trim()) {
+    return res.status(400).json({
+      message: 'Nombres y apellidos son obligatorios',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE users.usuario
+      SET
+        nombres = $1,
+        apellidos = $2,
+        telefono = $3
+      WHERE id_usuario = $4
+      RETURNING
+        id_usuario,
+        nombres,
+        apellidos,
+        correo,
+        telefono,
+        estado;
+      `,
+      [
+        nombres.trim(),
+        apellidos.trim(),
+        telefono?.trim() || null,
+        idUsuario,
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: 'Usuario no encontrado',
+      });
+    }
+
+    return res.json({
+      message: 'Usuario actualizado correctamente',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible actualizar el usuario',
+    });
+  }
+});
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {

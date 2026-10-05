@@ -2,21 +2,41 @@
   <div class="card">
 
     <div class="header">
-      <div>
-        <h1>Registrar Usuario</h1>
-        <p>Ingrese la información del nuevo usuario.</p>
-      </div>
+      <h1>
+        {{
+          editMode()
+            ? 'Editar Usuario'
+            : 'Registrar Usuario'
+        }}
+      </h1>
+
+      <p>
+        {{
+          editMode()
+            ? 'Modifique la información permitida del usuario.'
+            : 'Ingrese la información del nuevo usuario.'
+        }}
+      </p>
     </div>
+
+    @if (loading() && editMode() && !nombres) {
+      <div class="message">
+        Cargando información...
+      </div>
+    }
 
     <form (ngSubmit)="save()">
 
       <div class="field">
-        <label for="rol">Tipo de usuario *</label>
+        <label for="rol">
+          Tipo de usuario *
+        </label>
 
         <select
           id="rol"
           name="rol"
           [(ngModel)]="rol"
+          [disabled]="editMode()"
         >
           <option value="DOCENTE">
             Docente Asesor
@@ -26,8 +46,11 @@
             Coordinador de Prácticas
           </option>
 
-          <option value="ESTUDIANTE" disabled>
-            Estudiante — programa pendiente de configurar
+          <option
+            value="ESTUDIANTE"
+            [disabled]="!editMode()"
+          >
+            Estudiante
           </option>
         </select>
       </div>
@@ -35,7 +58,10 @@
       <div class="grid">
 
         <div class="field">
-          <label for="nombres">Nombres *</label>
+          <label for="nombres">
+            Nombres *
+          </label>
+
           <input
             id="nombres"
             name="nombres"
@@ -44,7 +70,10 @@
         </div>
 
         <div class="field">
-          <label for="apellidos">Apellidos *</label>
+          <label for="apellidos">
+            Apellidos *
+          </label>
+
           <input
             id="apellidos"
             name="apellidos"
@@ -61,11 +90,14 @@
             id="tipoDocumento"
             name="tipoDocumento"
             [(ngModel)]="tipoDocumento"
+            [disabled]="editMode()"
           >
             <option value="CC">CC</option>
             <option value="TI">TI</option>
             <option value="CE">CE</option>
-            <option value="PASAPORTE">Pasaporte</option>
+            <option value="PASAPORTE">
+              Pasaporte
+            </option>
           </select>
         </div>
 
@@ -78,22 +110,28 @@
             id="numeroDocumento"
             name="numeroDocumento"
             [(ngModel)]="numeroDocumento"
+            [disabled]="editMode()"
           />
         </div>
 
         <div class="field">
-          <label for="correo">Correo *</label>
+          <label for="correo">
+            Correo *
+          </label>
 
           <input
             id="correo"
             name="correo"
             type="email"
             [(ngModel)]="correo"
+            [disabled]="editMode()"
           />
         </div>
 
         <div class="field">
-          <label for="telefono">Teléfono</label>
+          <label for="telefono">
+            Teléfono
+          </label>
 
           <input
             id="telefono"
@@ -103,6 +141,13 @@
         </div>
 
       </div>
+
+      @if (editMode()) {
+        <div class="info-message">
+          El rol, documento y correo no pueden
+          modificarse desde esta operación.
+        </div>
+      }
 
       @if (errorMessage()) {
         <div class="message error">
@@ -117,6 +162,7 @@
       }
 
       <div class="buttons">
+
         <button
           type="button"
           class="secondary"
@@ -130,12 +176,17 @@
           class="primary"
           [disabled]="loading()"
         >
-          {{
-            loading()
-              ? 'Guardando...'
-              : 'Guardar'
-          }}
+          @if (loading()) {
+            Guardando...
+          } @else {
+            {{
+              editMode()
+                ? 'Guardar cambios'
+                : 'Guardar'
+            }}
+          }
         </button>
+
       </div>
 
     </form>

@@ -407,6 +407,70 @@ if (
     }
   }
 );
+// ========================================================
+// CU01 - CONSULTAR USUARIO POR ID
+// Solo Coordinador activo
+// ========================================================
+
+app.get(
+  '/api/users/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        `http://localhost:3334/api/users/${req.params.id}`
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error querying user:', error);
+
+      return res.status(503).json({
+        message:
+          'No fue posible comunicarse con User Service',
+      });
+    }
+  }
+);
+
+// ========================================================
+// CU01 - ACTUALIZAR USUARIO
+// Solo Coordinador activo
+// ========================================================
+
+app.patch(
+  '/api/users/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        `http://localhost:3334/api/users/${req.params.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error updating user:', error);
+
+      return res.status(503).json({
+        message:
+          'No fue posible comunicarse con User Service',
+      });
+    }
+  }
+);
 
 // AQUÍ empieza el servidor
 const port = process.env.PORT || 3333;
