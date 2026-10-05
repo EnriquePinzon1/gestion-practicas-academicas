@@ -12,15 +12,17 @@
       Probar User Service
     </button>
 
+    <button (click)="testUsers()">
+      Consultar usuarios
+    </button>
+
     <button (click)="logout()">
       Cerrar sesión
     </button>
   </div>
 
   @if (result()) {
-    <div class="success">
-      {{ result() }}
-    </div>
+    <pre class="success">{{ result() }}</pre>
   }
 
   @if (errorMessage()) {

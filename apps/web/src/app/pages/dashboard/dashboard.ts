@@ -61,6 +61,32 @@ export class Dashboard {
     }
   }
 
+  async testUsers() {
+    this.result.set('');
+    this.errorMessage.set('');
+
+    try {
+      const response = await this.api.get<{
+        data: Array<{
+          id_usuario: number;
+          nombres: string;
+          apellidos: string;
+          correo: string;
+          estado: string;
+          rol: string;
+        }>;
+      }>('/users');
+
+      this.result.set(
+        JSON.stringify(response.data, null, 2)
+      );
+    } catch (error) {
+      this.errorMessage.set(
+        error instanceof Error ? error.message : 'Error desconocido'
+      );
+    }
+  }
+
   async logout() {
     await supabase.auth.signOut();
     await this.router.navigate(['/login']);

@@ -211,6 +211,38 @@ app.get(
     }
   }
 );
+// Consultar usuarios
+app.get(
+  '/api/users',
+  requireAuth,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3334/api/users'
+      );
+
+      if (!response.ok) {
+        return res.status(502).json({
+          message: 'El User Service respondió con error',
+        });
+      }
+
+      const data = await response.json();
+
+      return res.json(data);
+    } catch (error) {
+      console.error(
+        'Error connecting to user-service:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'No fue posible comunicarse con User Service',
+      });
+    }
+  }
+);
 
 const port = process.env.PORT || 3333;
 
