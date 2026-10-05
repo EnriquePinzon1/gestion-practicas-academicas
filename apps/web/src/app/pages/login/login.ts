@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { supabase } from '../../core/supabase.client';
 
 @Component({
@@ -18,6 +19,8 @@ export class Login {
   errorMessage = signal('');
   successMessage = signal('');
 
+  constructor(private router: Router) {}
+
   async login() {
     this.errorMessage.set('');
     this.successMessage.set('');
@@ -30,14 +33,10 @@ export class Login {
     this.loading.set(true);
 
     try {
-      console.log('Intentando iniciar sesión...');
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: this.email.trim(),
         password: this.password,
       });
-
-      console.log('Respuesta de Supabase:', { data, error });
 
       if (error) {
         this.errorMessage.set(
@@ -55,6 +54,8 @@ export class Login {
 
       console.log('Usuario autenticado:', data.user);
       console.log('Sesión creada correctamente');
+
+      await this.router.navigate(['/dashboard']);
     } catch (error) {
       console.error('Error de conexión con Supabase:', error);
 

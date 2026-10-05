@@ -1,0 +1,31 @@
+<div class="dashboard">
+  <h1>Gestión de Prácticas Académicas</h1>
+
+  <p>Dashboard del Coordinador</p>
+
+  <div class="actions">
+    <button (click)="testGateway()">
+      Probar autenticación Gateway
+    </button>
+
+    <button (click)="testUserService()">
+      Probar User Service
+    </button>
+
+    <button (click)="logout()">
+      Cerrar sesión
+    </button>
+  </div>
+
+  @if (result()) {
+    <div class="success">
+      {{ result() }}
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="error">
+      {{ errorMessage() }}
+    </div>
+  }
+</div>
