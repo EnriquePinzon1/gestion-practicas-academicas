@@ -1,0 +1,130 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Gestión de Usuarios</h1>
+      <p>Consulta y administra los usuarios del sistema.</p>
+    </div>
+
+    <button class="primary" (click)="newUser()">
+      Nuevo usuario
+    </button>
+  </div>
+
+  <div class="filters">
+    <input
+      type="text"
+      placeholder="Buscar por nombre, correo o documento"
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)"
+    />
+
+    <select
+      [ngModel]="roleFilter()"
+      (ngModelChange)="roleFilter.set($event)"
+    >
+      <option value="">Todos los roles</option>
+      <option value="COORDINADOR">Coordinador</option>
+      <option value="DOCENTE">Docente Asesor</option>
+      <option value="ESTUDIANTE">Estudiante</option>
+    </select>
+
+    <select
+      [ngModel]="statusFilter()"
+      (ngModelChange)="statusFilter.set($event)"
+    >
+      <option value="">Todos los estados</option>
+      <option value="ACTIVO">Activo</option>
+      <option value="INACTIVO">Inactivo</option>
+    </select>
+
+    <button class="secondary" (click)="clearFilters()">
+      Limpiar filtros
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="state-message">
+      Cargando usuarios...
+    </div>
+  }
+
+  @if (errorMessage()) {
+    <div class="state-message error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (!loading() && !errorMessage()) {
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th>Documento</th>
+            <th>Correo</th>
+            <th>Rol</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          @for (usuario of filteredUsers(); track usuario.id_usuario) {
+            <tr>
+              <td>
+                <strong>
+                  {{ usuario.nombres }} {{ usuario.apellidos }}
+                </strong>
+              </td>
+
+              <td>
+                {{ usuario.tipo_documento }}
+                {{ usuario.numero_documento }}
+              </td>
+
+              <td>{{ usuario.correo }}</td>
+
+              <td>{{ usuario.rol }}</td>
+
+              <td>
+                <span
+                  class="status"
+                  [class.active]="usuario.estado === 'ACTIVO'"
+                  [class.inactive]="usuario.estado === 'INACTIVO'"
+                >
+                  {{ usuario.estado }}
+                </span>
+              </td>
+
+              <td class="actions">
+                <button
+                  class="table-button"
+                  (click)="editUser(usuario)"
+                >
+                  Editar
+                </button>
+
+                <button
+                  class="table-button"
+                  (click)="toggleStatus(usuario)"
+                >
+                  {{
+                    usuario.estado === 'ACTIVO'
+                      ? 'Desactivar'
+                      : 'Activar'
+                  }}
+                </button>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="6" class="empty">
+                No se encontraron usuarios.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
