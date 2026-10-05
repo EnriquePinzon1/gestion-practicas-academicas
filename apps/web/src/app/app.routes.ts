@@ -4,6 +4,7 @@ import { Dashboard } from './pages/dashboard/dashboard';
 import { Login } from './pages/login/login';
 import { UserForm } from './pages/users/user-form';
 import { Users } from './pages/users/users';
+import { UserDetail } from './pages/users/user-detail';
 
 export const appRoutes: Route[] = [
   {
@@ -30,6 +31,11 @@ export const appRoutes: Route[] = [
     component: UserForm,
     canActivate: [authGuard],
   },
+{
+  path: 'usuarios/:id',
+  component: UserDetail,
+  canActivate: [authGuard],
+},
   {
     path: '',
     redirectTo: 'login',

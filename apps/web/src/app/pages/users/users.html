@@ -97,24 +97,31 @@
               </td>
 
               <td class="actions">
-                <button
-                  class="table-button"
-                  (click)="editUser(usuario)"
-                >
-                  Editar
-                </button>
+  <button
+    class="table-button"
+    (click)="viewUser(usuario)"
+  >
+    Ver
+  </button>
 
-                <button
-                  class="table-button"
-                  (click)="toggleStatus(usuario)"
-                >
-                  {{
-                    usuario.estado === 'ACTIVO'
-                      ? 'Desactivar'
-                      : 'Activar'
-                  }}
-                </button>
-              </td>
+  <button
+    class="table-button"
+    (click)="editUser(usuario)"
+  >
+    Editar
+  </button>
+
+  <button
+    class="table-button"
+    (click)="toggleStatus(usuario)"
+  >
+    {{
+      usuario.estado === 'ACTIVO'
+        ? 'Desactivar'
+        : 'Activar'
+    }}
+  </button>
+</td>
             </tr>
           } @empty {
             <tr>

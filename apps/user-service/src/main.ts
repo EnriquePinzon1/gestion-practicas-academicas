@@ -525,10 +525,20 @@ app.get('/api/users/:id', async (req, res) => {
         u.correo,
         u.telefono,
         u.estado,
-        r.nombre AS rol
+        r.nombre AS rol,
+
+        e.codigo_estudiante,
+        e.semestre,
+        e.id_programa
+
       FROM users.usuario u
+
       INNER JOIN users.rol r
         ON r.id_rol = u.id_rol
+
+      LEFT JOIN users.estudiante e
+        ON e.id_usuario = u.id_usuario
+
       WHERE u.id_usuario = $1;
       `,
       [idUsuario]

@@ -1,0 +1,126 @@
+<div class="page">
+  <div class="card">
+
+    @if (loading()) {
+      <p>Cargando información...</p>
+    }
+
+    @if (errorMessage()) {
+      <div class="error">
+        {{ errorMessage() }}
+      </div>
+    }
+
+    @if (usuario(); as user) {
+
+      <div class="header">
+        <div>
+          <h1>Detalle del Usuario</h1>
+          <p>
+            Información personal y académica registrada.
+          </p>
+        </div>
+
+        <span
+          class="status"
+          [class.active]="user.estado === 'ACTIVO'"
+          [class.inactive]="user.estado === 'INACTIVO'"
+        >
+          {{ user.estado }}
+        </span>
+      </div>
+
+      <section>
+        <h2>Información personal</h2>
+
+        <div class="grid">
+
+          <div class="item">
+            <span>Nombres</span>
+            <strong>{{ user.nombres }}</strong>
+          </div>
+
+          <div class="item">
+            <span>Apellidos</span>
+            <strong>{{ user.apellidos }}</strong>
+          </div>
+
+          <div class="item">
+            <span>Documento</span>
+            <strong>
+              {{ user.tipo_documento }}
+              {{ user.numero_documento }}
+            </strong>
+          </div>
+
+          <div class="item">
+            <span>Correo</span>
+            <strong>{{ user.correo }}</strong>
+          </div>
+
+          <div class="item">
+            <span>Teléfono</span>
+            <strong>
+              {{ user.telefono || 'No registrado' }}
+            </strong>
+          </div>
+
+          <div class="item">
+            <span>Rol</span>
+            <strong>{{ user.rol }}</strong>
+          </div>
+
+        </div>
+      </section>
+
+      @if (user.rol === 'ESTUDIANTE') {
+        <section>
+          <h2>Información académica</h2>
+
+          <div class="grid">
+
+            <div class="item">
+              <span>Código de estudiante</span>
+              <strong>
+                {{ user.codigo_estudiante }}
+              </strong>
+            </div>
+
+            <div class="item">
+              <span>Programa académico</span>
+              <strong>
+                {{ programaNombre() }}
+              </strong>
+            </div>
+
+            <div class="item">
+              <span>Semestre</span>
+              <strong>
+                {{ user.semestre }}
+              </strong>
+            </div>
+
+          </div>
+        </section>
+      }
+
+      <div class="buttons">
+        <button
+          class="secondary"
+          (click)="back()"
+        >
+          Volver
+        </button>
+
+        <button
+          class="primary"
+          (click)="edit()"
+        >
+          Editar
+        </button>
+      </div>
+
+    }
+
+  </div>
+</div>

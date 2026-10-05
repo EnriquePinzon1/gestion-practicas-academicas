@@ -1,8 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ApiService } from '../../core/services/api.service';
 import { Router } from '@angular/router';
+import { ApiService } from '../../core/services/api.service';
 
 interface Usuario {
   id_usuario: number;
@@ -33,11 +33,11 @@ export class Users {
   statusFilter = signal('');
 
   constructor(
-  private readonly api: ApiService,
-  private readonly router: Router
-) {
-  this.loadUsers();
-}
+    private readonly api: ApiService,
+    private readonly router: Router
+  ) {
+    this.loadUsers();
+  }
 
   filteredUsers = computed(() => {
     const search = this.search().trim().toLowerCase();
@@ -52,10 +52,17 @@ export class Users {
         usuario.correo.toLowerCase().includes(search) ||
         usuario.numero_documento.toLowerCase().includes(search);
 
-      const matchesRole = !role || usuario.rol === role;
-      const matchesStatus = !status || usuario.estado === status;
+      const matchesRole =
+        !role || usuario.rol === role;
 
-      return matchesSearch && matchesRole && matchesStatus;
+      const matchesStatus =
+        !status || usuario.estado === status;
+
+      return (
+        matchesSearch &&
+        matchesRole &&
+        matchesStatus
+      );
     });
   });
 
@@ -64,7 +71,10 @@ export class Users {
     this.errorMessage.set('');
 
     try {
-      const response = await this.api.get<{ data: Usuario[] }>('/users');
+      const response = await this.api.get<{
+        data: Usuario[];
+      }>('/users');
+
       this.usuarios.set(response.data);
     } catch (error) {
       this.errorMessage.set(
@@ -84,53 +94,60 @@ export class Users {
   }
 
   newUser() {
-  this.router.navigate(['/usuarios/nuevo']);
-}
+    this.router.navigate(['/usuarios/nuevo']);
+  }
+
+  viewUser(usuario: Usuario) {
+    this.router.navigate([
+      '/usuarios',
+      usuario.id_usuario,
+    ]);
+  }
 
   editUser(usuario: Usuario) {
-  this.router.navigate([
-    '/usuarios',
-    usuario.id_usuario,
-    'editar',
-  ]);
-}
+    this.router.navigate([
+      '/usuarios',
+      usuario.id_usuario,
+      'editar',
+    ]);
+  }
 
   async toggleStatus(usuario: Usuario) {
-  const nuevoEstado =
-    usuario.estado === 'ACTIVO'
-      ? 'INACTIVO'
-      : 'ACTIVO';
+    const nuevoEstado =
+      usuario.estado === 'ACTIVO'
+        ? 'INACTIVO'
+        : 'ACTIVO';
 
-  const accion =
-    nuevoEstado === 'INACTIVO'
-      ? 'desactivar'
-      : 'activar';
+    const accion =
+      nuevoEstado === 'INACTIVO'
+        ? 'desactivar'
+        : 'activar';
 
-  const confirmado = window.confirm(
-    `¿Está seguro de que desea ${accion} a ${usuario.nombres} ${usuario.apellidos}?`
-  );
-
-  if (!confirmado) {
-    return;
-  }
-
-  this.errorMessage.set('');
-
-  try {
-    await this.api.patch(
-      `/users/${usuario.id_usuario}/status`,
-      {
-        estado: nuevoEstado,
-      }
+    const confirmado = window.confirm(
+      `¿Está seguro de que desea ${accion} a ${usuario.nombres} ${usuario.apellidos}?`
     );
 
-    await this.loadUsers();
-  } catch (error) {
-    this.errorMessage.set(
-      error instanceof Error
-        ? error.message
-        : 'No fue posible cambiar el estado del usuario.'
-    );
+    if (!confirmado) {
+      return;
+    }
+
+    this.errorMessage.set('');
+
+    try {
+      await this.api.patch(
+        `/users/${usuario.id_usuario}/status`,
+        {
+          estado: nuevoEstado,
+        }
+      );
+
+      await this.loadUsers();
+    } catch (error) {
+      this.errorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible cambiar el estado del usuario.'
+      );
+    }
   }
-}
 }
