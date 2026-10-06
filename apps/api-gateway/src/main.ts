@@ -724,6 +724,245 @@ app.patch(
   }
 );
 
+// ======================================================
+// CU03 - GRUPOS DE PRÁCTICA
+// ======================================================
+
+// Docentes disponibles para grupos
+app.get(
+  '/api/group-options/teachers',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3334/api/internal/teachers/available'
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando docentes para grupos:',
+        error
+      );
+
+      return res.status(503).json({
+        message: 'User Service no disponible',
+      });
+    }
+  }
+);
+
+// Estudiantes disponibles para grupos
+app.get(
+  '/api/group-options/students',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3334/api/internal/students/available'
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando estudiantes para grupos:',
+        error
+      );
+
+      return res.status(503).json({
+        message: 'User Service no disponible',
+      });
+    }
+  }
+);
+
+// Listar grupos
+app.get(
+  '/api/groups',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/groups'
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error consultando grupos:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Crear grupo
+app.post(
+  '/api/groups',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/groups',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error creando grupo:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Consultar grupo
+app.get(
+  '/api/groups/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/groups/' +
+          req.params.id
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error consultando grupo:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Actualizar grupo
+app.patch(
+  '/api/groups/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/groups/' +
+          req.params.id,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error actualizando grupo:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Agregar o retirar estudiante
+app.patch(
+  '/api/groups/:id/students',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/groups/' +
+          req.params.id +
+          '/students',
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error(
+        'Error modificando integrantes:',
+        error
+      );
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Cerrar grupo
+app.patch(
+  '/api/groups/:id/status',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/groups/' +
+          req.params.id +
+          '/status',
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error cerrando grupo:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
 // AQUÍ empieza el servidor
 const port = process.env.PORT || 3333;
 

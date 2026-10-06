@@ -1,0 +1,132 @@
+﻿<div class="page">
+  <div class="header">
+    <div>
+      <h1>Gestión de Grupos de Práctica</h1>
+      <p>Administra grupos, docentes asesores e integrantes.</p>
+    </div>
+
+    <button class="primary" (click)="newGroup()">
+      Nuevo grupo
+    </button>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  <div class="filters">
+    <input
+      type="text"
+      placeholder="Buscar grupo"
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)"
+    />
+
+    <select
+      [ngModel]="practiceFilter()"
+      (ngModelChange)="practiceFilter.set($event)"
+    >
+      <option value="">Todas las prácticas</option>
+
+      @for (practica of practicas(); track practica.id_practica) {
+        <option [value]="practica.id_practica">
+          {{ practica.nombre }}
+        </option>
+      }
+    </select>
+
+    <select
+      [ngModel]="semesterFilter()"
+      (ngModelChange)="semesterFilter.set($event)"
+    >
+      <option value="">Todos los semestres</option>
+
+      @for (semestre of [1,2,3,4,5,6,7,8,9,10]; track semestre) {
+        <option [value]="semestre">
+          Semestre {{ semestre }}
+        </option>
+      }
+    </select>
+
+    <select
+      [ngModel]="statusFilter()"
+      (ngModelChange)="statusFilter.set($event)"
+    >
+      <option value="">Todos los estados</option>
+      <option value="ACTIVO">Activo</option>
+      <option value="CERRADO">Cerrado</option>
+    </select>
+
+    <button class="secondary" (click)="clearFilters()">
+      Limpiar filtros
+    </button>
+  </div>
+
+  @if (loading()) {
+    <p>Cargando grupos...</p>
+  } @else {
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Grupo</th>
+            <th>Práctica</th>
+            <th>Semestre</th>
+            <th>Docente asesor</th>
+            <th>Integrantes</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          @for (grupo of filteredGroups(); track grupo.id_grupo) {
+            <tr>
+              <td>{{ grupo.nombre }}</td>
+              <td>{{ grupo.practica }}</td>
+              <td>{{ grupo.semestre ?? '—' }}</td>
+              <td>{{ teacherName(grupo.id_docente) }}</td>
+              <td>{{ grupo.total_estudiantes }}</td>
+
+              <td>
+                <span
+                  class="status"
+                  [class.closed]="grupo.estado === 'CERRADO'"
+                >
+                  {{ grupo.estado }}
+                </span>
+              </td>
+
+              <td class="actions">
+                <button (click)="viewGroup(grupo)">
+                  Ver
+                </button>
+
+                @if (grupo.estado === 'ACTIVO') {
+                  <button (click)="editGroup(grupo)">
+                    Editar
+                  </button>
+
+                  <button
+                    class="danger"
+                    (click)="closeGroup(grupo)"
+                  >
+                    Cerrar
+                  </button>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="7">
+                No se encontraron grupos.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

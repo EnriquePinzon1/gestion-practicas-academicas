@@ -1,0 +1,96 @@
+﻿<div class="page">
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (loading()) {
+    <p>Cargando grupo...</p>
+  }
+
+  @if (grupo(); as g) {
+    <div class="card">
+      <div class="header">
+        <div>
+          <h1>{{ g.nombre }}</h1>
+
+          <span
+            class="status"
+            [class.closed]="g.estado === 'CERRADO'"
+          >
+            {{ g.estado }}
+          </span>
+        </div>
+
+        <div class="actions">
+          <button (click)="back()">Volver</button>
+
+          @if (g.estado === 'ACTIVO') {
+            <button class="edit" (click)="edit()">
+              Editar
+            </button>
+
+            <button
+              class="danger"
+              (click)="closeGroup()"
+            >
+              Cerrar grupo
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <strong>Práctica</strong>
+          <p>{{ g.practica }}</p>
+        </div>
+
+        <div>
+          <strong>Semestre</strong>
+          <p>{{ g.semestre ?? 'No definido' }}</p>
+        </div>
+
+        <div>
+          <strong>Docente Asesor</strong>
+
+          @if (g.docente) {
+            <p>
+              {{ g.docente.nombres }}
+              {{ g.docente.apellidos }}
+            </p>
+            <small>{{ g.docente.correo }}</small>
+          } @else {
+            <p>Docente #{{ g.id_docente }}</p>
+          }
+        </div>
+
+        <div>
+          <strong>Total integrantes</strong>
+          <p>{{ g.integrantes.length }}</p>
+        </div>
+      </div>
+
+      <div class="members">
+        <h2>Integrantes del grupo</h2>
+
+        @for (student of g.integrantes; track student.id_estudiante) {
+          <div class="member">
+            <strong>
+              {{ student.nombres }}
+              {{ student.apellidos }}
+            </strong>
+
+            <span>
+              {{ student.codigo_estudiante }}
+              · Semestre {{ student.semestre }}
+            </span>
+          </div>
+        } @empty {
+          <p>No hay estudiantes registrados.</p>
+        }
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,201 @@
+﻿<div class="page">
+  <div class="card">
+    <h1>
+      {{ editMode() ? 'Editar Grupo' : 'Registrar Grupo' }}
+    </h1>
+
+    @if (errorMessage()) {
+      <div class="alert error">
+        {{ errorMessage() }}
+      </div>
+    }
+
+    @if (successMessage()) {
+      <div class="alert success">
+        {{ successMessage() }}
+      </div>
+    }
+
+    <div class="group-data">
+      <label>
+        Nombre del grupo *
+        <input
+          type="text"
+          [(ngModel)]="nombre"
+        />
+      </label>
+
+      <label>
+        Práctica *
+        <select [(ngModel)]="idPractica">
+          <option [ngValue]="null">
+            Seleccione una práctica
+          </option>
+
+          @for (practica of activePractices(); track practica.id_practica) {
+            <option [ngValue]="practica.id_practica">
+              {{ practica.nombre }}
+            </option>
+          }
+        </select>
+      </label>
+
+      <label>
+        Semestre
+        <input
+          type="number"
+          min="1"
+          max="20"
+          [(ngModel)]="semestre"
+        />
+      </label>
+
+      <label>
+        Docente Asesor *
+        <select [(ngModel)]="idDocente">
+          <option [ngValue]="null">
+            Seleccione un docente
+          </option>
+
+          @for (docente of docentes(); track docente.id_docente) {
+            <option [ngValue]="docente.id_docente">
+              {{ docente.nombres }} {{ docente.apellidos }}
+            </option>
+          }
+        </select>
+      </label>
+    </div>
+
+    <div class="students-section">
+      <h2>Estudiantes disponibles</h2>
+
+      <div class="student-filters">
+        <input
+          type="text"
+          placeholder="Buscar por nombre, apellido o código"
+          [ngModel]="studentSearch()"
+          (ngModelChange)="studentSearch.set($event)"
+        />
+
+        <select
+          [ngModel]="programFilter()"
+          (ngModelChange)="programFilter.set($event)"
+        >
+          <option value="">Todos los programas</option>
+
+          @for (programa of programas(); track programa.id_programa) {
+            <option [value]="programa.id_programa">
+              {{ programa.nombre }}
+            </option>
+          }
+        </select>
+
+        <select
+          [ngModel]="semesterFilter()"
+          (ngModelChange)="semesterFilter.set($event)"
+        >
+          <option value="">Todos los semestres</option>
+
+          @for (semestreItem of [1,2,3,4,5,6,7,8,9,10]; track semestreItem) {
+            <option [value]="semestreItem">
+              {{ semestreItem }}
+            </option>
+          }
+        </select>
+
+        <button
+          type="button"
+          class="secondary"
+          (click)="clearStudentFilters()"
+        >
+          Limpiar
+        </button>
+      </div>
+
+      <div class="student-list">
+        @for (student of availableStudents(); track student.id_estudiante) {
+          <div class="student-row">
+            <div>
+              <strong>
+                {{ student.nombres }}
+                {{ student.apellidos }}
+              </strong>
+
+              <span>
+                {{ student.codigo_estudiante }}
+                · Semestre {{ student.semestre }}
+                · {{ programName(student.id_programa) }}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              class="add"
+              (click)="addStudent(student)"
+            >
+              Agregar
+            </button>
+          </div>
+        } @empty {
+          <p class="empty">
+            No hay estudiantes disponibles con estos filtros.
+          </p>
+        }
+      </div>
+    </div>
+
+    <div class="members-section">
+      <h2>
+        Integrantes del grupo
+        <span>{{ selectedStudents().length }}</span>
+      </h2>
+
+      @for (student of selectedStudents(); track student.id_estudiante) {
+        <div class="student-row selected">
+          <div>
+            <strong>
+              {{ student.nombres }}
+              {{ student.apellidos }}
+            </strong>
+
+            <span>
+              {{ student.codigo_estudiante }}
+              · Semestre {{ student.semestre }}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="remove"
+            (click)="removeStudent(student)"
+          >
+            Quitar
+          </button>
+        </div>
+      } @empty {
+        <p class="empty">
+          Aún no ha seleccionado estudiantes.
+        </p>
+      }
+    </div>
+
+    <div class="actions">
+      <button
+        type="button"
+        class="secondary"
+        (click)="cancel()"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="button"
+        class="primary"
+        [disabled]="loading()"
+        (click)="save()"
+      >
+        {{ editMode() ? 'Guardar cambios' : 'Guardar grupo' }}
+      </button>
+    </div>
+  </div>
+</div>
