@@ -1,1 +1,72 @@
-<router-outlet></router-outlet>
+@if (isLoginPage()) {
+  <router-outlet></router-outlet>
+} @else {
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">GP</div>
+
+        <div>
+          <strong>Gestión de Prácticas</strong>
+          <span>Académicas</span>
+        </div>
+      </div>
+
+      <div class="role">
+        <span class="role-label">
+          Coordinador de Prácticas
+        </span>
+      </div>
+
+      <nav class="navigation">
+        <a
+          routerLink="/dashboard"
+          routerLinkActive="active"
+        >
+          <span class="nav-icon">▦</span>
+          Panel principal
+        </a>
+
+        <a
+          routerLink="/usuarios"
+          routerLinkActive="active"
+        >
+          <span class="nav-icon">♙</span>
+          Usuarios
+        </a>
+
+        <a
+          routerLink="/practicas"
+          routerLinkActive="active"
+        >
+          <span class="nav-icon">▤</span>
+          Prácticas
+        </a>
+
+        <a
+          routerLink="/grupos"
+          routerLinkActive="active"
+        >
+          <span class="nav-icon">♟</span>
+          Grupos
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button
+          type="button"
+          (click)="logout()"
+        >
+          <span>↪</span>
+          Cerrar sesión
+        </button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <router-outlet></router-outlet>
+    </main>
+
+  </div>
+}
