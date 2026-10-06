@@ -773,6 +773,89 @@ app.patch('/api/users/:id', async (req, res) => {
   }
 });
 
+// ======================================================
+// CU03 - DATOS INTERNOS PARA GRUPOS
+// ======================================================
+
+// Docentes asesores activos
+app.get('/api/internal/teachers/available', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        d.id_docente,
+        u.id_usuario,
+        u.nombres,
+        u.apellidos,
+        u.numero_documento,
+        u.correo
+      FROM users.docente_asesor d
+      INNER JOIN users.usuario u
+        ON u.id_usuario = d.id_usuario
+      INNER JOIN users.rol r
+        ON r.id_rol = u.id_rol
+      WHERE
+        r.nombre = 'DOCENTE'
+        AND u.estado = 'ACTIVO'
+      ORDER BY u.nombres, u.apellidos
+    `);
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando docentes disponibles:',
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar los docentes asesores disponibles',
+    });
+  }
+});
+
+// Estudiantes activos
+app.get('/api/internal/students/available', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        e.id_estudiante,
+        u.id_usuario,
+        u.nombres,
+        u.apellidos,
+        u.numero_documento,
+        u.correo,
+        e.codigo_estudiante,
+        e.semestre,
+        e.id_programa
+      FROM users.estudiante e
+      INNER JOIN users.usuario u
+        ON u.id_usuario = e.id_usuario
+      INNER JOIN users.rol r
+        ON r.id_rol = u.id_rol
+      WHERE
+        r.nombre = 'ESTUDIANTE'
+        AND u.estado = 'ACTIVO'
+      ORDER BY u.nombres, u.apellidos
+    `);
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando estudiantes disponibles:',
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar los estudiantes disponibles',
+    });
+  }
+});
+
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {

@@ -12,6 +12,10 @@ import { Practices } from './pages/practices/practices';
 import { PracticeForm } from './pages/practices/practice-form';
 import { PracticeDetail } from './pages/practices/practice-detail';
 
+import { Groups } from './pages/groups/groups';
+import { GroupForm } from './pages/groups/group-form';
+import { GroupDetail } from './pages/groups/group-detail';
+
 export const appRoutes: Route[] = [
   {
     path: 'login',
@@ -64,7 +68,26 @@ export const appRoutes: Route[] = [
     component: PracticeDetail,
     canActivate: [authGuard],
   },
-
+  {
+  path: 'grupos',
+  component: Groups,
+  canActivate: [authGuard],
+  },
+  {
+  path: 'grupos/nuevo',
+  component: GroupForm,
+  canActivate: [authGuard],
+  },
+  {
+  path: 'grupos/:id/editar',
+  component: GroupForm,
+  canActivate: [authGuard],
+  },
+  {
+  path: 'grupos/:id',
+  component: GroupDetail,
+  canActivate: [authGuard],
+  },
   {
     path: '',
     redirectTo: 'login',
