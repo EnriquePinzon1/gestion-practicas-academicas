@@ -1,0 +1,138 @@
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Gestión de Prácticas Académicas</h1>
+      <p>Registro, consulta y administración de prácticas.</p>
+    </div>
+
+    <button class="primary" (click)="newPractice()">
+      Nueva práctica
+    </button>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  <div class="filters">
+    <input
+      type="text"
+      placeholder="Buscar práctica"
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)"
+    />
+
+    <select
+      [ngModel]="programFilter()"
+      (ngModelChange)="programFilter.set($event)"
+    >
+      <option value="">Todos los programas</option>
+
+      @for (programa of programas(); track programa.id_programa) {
+        <option [value]="programa.id_programa">
+          {{ programa.nombre }}
+        </option>
+      }
+    </select>
+
+    <select
+      [ngModel]="institutionFilter()"
+      (ngModelChange)="institutionFilter.set($event)"
+    >
+      <option value="">Todas las instituciones</option>
+
+      @for (institucion of instituciones(); track institucion.id_institucion) {
+        <option [value]="institucion.id_institucion">
+          {{ institucion.nombre }}
+        </option>
+      }
+    </select>
+
+    <input
+      type="text"
+      placeholder="Periodo académico"
+      [ngModel]="periodFilter()"
+      (ngModelChange)="periodFilter.set($event)"
+    />
+
+    <select
+      [ngModel]="statusFilter()"
+      (ngModelChange)="statusFilter.set($event)"
+    >
+      <option value="">Todos los estados</option>
+      <option value="ACTIVA">Activa</option>
+      <option value="CERRADA">Cerrada</option>
+    </select>
+
+    <button class="secondary" (click)="clearFilters()">
+      Limpiar filtros
+    </button>
+  </div>
+
+  @if (loading()) {
+    <p>Cargando prácticas...</p>
+  } @else {
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Práctica</th>
+            <th>Programa</th>
+            <th>Institución</th>
+            <th>Periodo</th>
+            <th>Horas</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          @for (practica of filteredPractices(); track practica.id_practica) {
+            <tr>
+              <td>{{ practica.nombre }}</td>
+              <td>{{ practica.programa }}</td>
+              <td>{{ practica.institucion }}</td>
+              <td>{{ practica.periodo_academico }}</td>
+              <td>{{ practica.horas_requeridas }}</td>
+              <td>
+                <span
+                  class="status"
+                  [class.closed]="practica.estado === 'CERRADA'"
+                >
+                  {{ practica.estado }}
+                </span>
+              </td>
+
+              <td class="actions">
+                <button (click)="viewPractice(practica)">
+                  Ver
+                </button>
+
+                <button (click)="editPractice(practica)">
+                  Editar
+                </button>
+
+                @if (practica.estado === 'ACTIVA') {
+                  <button
+                    class="danger"
+                    (click)="closePractice(practica)"
+                  >
+                    Cerrar
+                  </button>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="7">
+                No se encontraron prácticas.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

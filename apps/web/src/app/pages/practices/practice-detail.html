@@ -1,0 +1,73 @@
+<div class="page">
+  @if (loading()) {
+    <p>Cargando práctica...</p>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (practica(); as p) {
+    <div class="card">
+      <div class="header">
+        <div>
+          <h1>{{ p.nombre }}</h1>
+          <span
+            class="status"
+            [class.closed]="p.estado === 'CERRADA'"
+          >
+            {{ p.estado }}
+          </span>
+        </div>
+
+        <div class="actions">
+          <button (click)="back()">
+            Volver
+          </button>
+
+          <button (click)="edit()">
+            Editar
+          </button>
+
+          @if (p.estado === 'ACTIVA') {
+            <button
+              class="danger"
+              (click)="closePractice()"
+            >
+              Cerrar práctica
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <strong>Programa académico</strong>
+          <p>{{ p.programa }}</p>
+        </div>
+
+        <div>
+          <strong>Institución receptora</strong>
+          <p>{{ p.institucion }}</p>
+        </div>
+
+        <div>
+          <strong>Periodo académico</strong>
+          <p>{{ p.periodo_academico }}</p>
+        </div>
+
+        <div>
+          <strong>Horas requeridas</strong>
+          <p>{{ p.horas_requeridas }}</p>
+        </div>
+      </div>
+
+      <div class="description">
+        <strong>Descripción</strong>
+        <p>{{ p.descripcion }}</p>
+      </div>
+    </div>
+  }
+</div>

@@ -500,6 +500,230 @@ app.get(
   }
 );
 
+// ======================================================
+// CU02 - PRÁCTICAS ACADÉMICAS
+// ======================================================
+
+// Listar programas
+app.get(
+  '/api/programs',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/programs'
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error consultando programas:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Listar instituciones
+app.get(
+  '/api/institutions',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/institutions'
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error consultando instituciones:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Crear institución
+app.post(
+  '/api/institutions',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/institutions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error creando institución:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Listar prácticas
+app.get(
+  '/api/practices',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        `http://localhost:3335/api/practices`
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error consultando prácticas:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Registrar práctica
+app.post(
+  '/api/practices',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/practices',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error creando práctica:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Consultar práctica
+app.get(
+  '/api/practices/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+  'http://localhost:3335/api/practices/' + req.params.id
+);
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error consultando práctica:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Actualizar práctica
+app.patch(
+  '/api/practices/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        `http://localhost:3335/api/practices/${req.params.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error actualizando práctica:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Cerrar práctica
+app.patch(
+  '/api/practices/:id/status',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        `http://localhost:3335/api/practices/${req.params.id}/status`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        }
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error('Error cambiando estado de práctica:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
 // AQUÍ empieza el servidor
 const port = process.env.PORT || 3333;
 

@@ -1,0 +1,113 @@
+<div class="page">
+  <div class="card">
+    <h1>
+      {{ editMode() ? 'Editar Práctica' : 'Registrar Práctica' }}
+    </h1>
+
+    @if (errorMessage()) {
+      <div class="alert error">
+        {{ errorMessage() }}
+      </div>
+    }
+
+    @if (successMessage()) {
+      <div class="alert success">
+        {{ successMessage() }}
+      </div>
+    }
+
+    <form (ngSubmit)="save()">
+      <label>
+        Nombre *
+        <input
+          type="text"
+          [(ngModel)]="nombre"
+          name="nombre"
+        />
+      </label>
+
+      <label>
+        Descripción *
+        <textarea
+          [(ngModel)]="descripcion"
+          name="descripcion"
+          rows="5"
+        ></textarea>
+      </label>
+
+      <label>
+        Programa académico *
+        <select
+          [(ngModel)]="idPrograma"
+          name="idPrograma"
+        >
+          <option [ngValue]="null">
+            Seleccione un programa
+          </option>
+
+          @for (programa of programas(); track programa.id_programa) {
+            <option [ngValue]="programa.id_programa">
+              {{ programa.nombre }}
+            </option>
+          }
+        </select>
+      </label>
+
+      <label>
+        Institución receptora *
+        <select
+          [(ngModel)]="idInstitucion"
+          name="idInstitucion"
+        >
+          <option [ngValue]="null">
+            Seleccione una institución
+          </option>
+
+          @for (institucion of instituciones(); track institucion.id_institucion) {
+            <option [ngValue]="institucion.id_institucion">
+              {{ institucion.nombre }}
+            </option>
+          }
+        </select>
+      </label>
+
+      <label>
+        Periodo académico *
+        <input
+          type="text"
+          placeholder="Ejemplo: 2026-2"
+          [(ngModel)]="periodoAcademico"
+          name="periodoAcademico"
+        />
+      </label>
+
+      <label>
+        Horas requeridas *
+        <input
+          type="number"
+          min="1"
+          [(ngModel)]="horasRequeridas"
+          name="horasRequeridas"
+        />
+      </label>
+
+      <div class="actions">
+        <button
+          type="button"
+          class="secondary"
+          (click)="cancel()"
+        >
+          Cancelar
+        </button>
+
+        <button
+          type="submit"
+          class="primary"
+          [disabled]="loading()"
+        >
+          {{ editMode() ? 'Guardar cambios' : 'Guardar' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
