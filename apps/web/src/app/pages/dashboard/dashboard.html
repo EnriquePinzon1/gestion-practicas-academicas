@@ -1,7 +1,9 @@
 <div class="dashboard">
 
   <header class="dashboard-header">
+
     <div>
+
       <span class="eyebrow">
         Panel principal
       </span>
@@ -10,284 +12,652 @@
         Gestión de Prácticas Académicas
       </h1>
 
-      <p>
-        Resumen general de la gestión académica y
-        administrativa.
-      </p>
+      @if (isCoordinator()) {
+        <p>
+          Resumen general de la gestión
+          académica y administrativa.
+        </p>
+      }
+
+      @if (isTeacher()) {
+        <p>
+          Seguimiento de los grupos y
+          actividades académicas asignadas.
+        </p>
+      }
+
     </div>
 
-<div class="coordinator-badge">
-  <span class="avatar">
-    {{ coordinatorInitial() }}
-  </span>
+    <div class="coordinator-badge">
 
-  <div>
-    <strong>
-      {{ coordinatorName() }}
-    </strong>
+      <span class="avatar">
+        {{ profileInitial() }}
+      </span>
 
-    <small>
-      Coordinador de Prácticas
-    </small>
-  </div>
-</div>
+      <div>
+
+        <strong>
+          {{ profileName() }}
+        </strong>
+
+        @if (isCoordinator()) {
+          <small>
+            Coordinador de Prácticas
+          </small>
+        }
+
+        @if (isTeacher()) {
+          <small>
+            Docente Asesor
+          </small>
+        }
+
+      </div>
+
+    </div>
+
   </header>
 
+
   @if (errorMessage()) {
+
     <div class="alert error">
       {{ errorMessage() }}
     </div>
+
   }
 
+
   @if (loading()) {
+
     <div class="loading">
       Cargando información del panel...
     </div>
+
   } @else {
 
-    <section class="metrics">
 
-      <button
-        class="metric-card"
-        type="button"
-        (click)="goToUsers()"
-      >
-        <div class="metric-icon students">
-          🎓
-        </div>
+    <!-- ================================= -->
+    <!-- DASHBOARD COORDINADOR             -->
+    <!-- ================================= -->
 
-        <div>
-          <span>Estudiantes activos</span>
-          <strong>{{ totalEstudiantes() }}</strong>
-        </div>
-      </button>
+    @if (isCoordinator()) {
 
-      <button
-        class="metric-card"
-        type="button"
-        (click)="goToUsers()"
-      >
-        <div class="metric-icon teachers">
-          👨‍🏫
-        </div>
-
-        <div>
-          <span>Docentes asesores</span>
-          <strong>{{ totalDocentes() }}</strong>
-        </div>
-      </button>
-
-      <button
-        class="metric-card"
-        type="button"
-        (click)="goToPractices()"
-      >
-        <div class="metric-icon practices">
-          📋
-        </div>
-
-        <div>
-          <span>Prácticas activas</span>
-          <strong>{{ practicasActivas() }}</strong>
-        </div>
-      </button>
-
-      <button
-        class="metric-card"
-        type="button"
-        (click)="goToGroups()"
-      >
-        <div class="metric-icon groups">
-          👥
-        </div>
-
-        <div>
-          <span>Grupos activos</span>
-          <strong>{{ gruposActivos() }}</strong>
-        </div>
-      </button>
-
-    </section>
-
-    <section class="quick-section">
-
-      <div class="section-heading">
-        <div>
-          <h2>Acciones rápidas</h2>
-          <p>
-            Accede directamente a las operaciones principales.
-          </p>
-        </div>
-      </div>
-
-      <div class="quick-actions">
+      <section class="metrics">
 
         <button
+          class="metric-card"
           type="button"
-          (click)="newUser()"
+          (click)="goToUsers()"
         >
-          <span>+</span>
+          <div class="metric-icon students">
+            🎓
+          </div>
+
           <div>
-            <strong>Nuevo usuario</strong>
-            <small>
-              Registrar estudiante, docente o coordinador
-            </small>
+            <span>
+              Estudiantes activos
+            </span>
+
+            <strong>
+              {{ totalEstudiantes() }}
+            </strong>
           </div>
         </button>
 
+
         <button
+          class="metric-card"
           type="button"
-          (click)="newPractice()"
+          (click)="goToUsers()"
         >
-          <span>+</span>
+          <div class="metric-icon teachers">
+            👨‍🏫
+          </div>
+
           <div>
-            <strong>Nueva práctica</strong>
-            <small>
-              Crear una práctica académica
-            </small>
+            <span>
+              Docentes asesores
+            </span>
+
+            <strong>
+              {{ totalDocentes() }}
+            </strong>
           </div>
         </button>
 
+
         <button
+          class="metric-card"
           type="button"
-          (click)="newGroup()"
+          (click)="goToPractices()"
         >
-          <span>+</span>
+          <div class="metric-icon practices">
+            📋
+          </div>
+
           <div>
-            <strong>Nuevo grupo</strong>
-            <small>
-              Asignar docente y estudiantes
-            </small>
+            <span>
+              Prácticas activas
+            </span>
+
+            <strong>
+              {{ practicasActivas() }}
+            </strong>
           </div>
         </button>
 
-      </div>
-    </section>
 
-    <section class="dashboard-grid">
-
-      <article class="panel">
-
-        <div class="panel-header">
-          <div>
-            <h2>Prácticas recientes</h2>
-            <p>Últimos registros disponibles</p>
+        <button
+          class="metric-card"
+          type="button"
+          (click)="goToGroups()"
+        >
+          <div class="metric-icon groups">
+            👥
           </div>
+
+          <div>
+            <span>
+              Grupos activos
+            </span>
+
+            <strong>
+              {{ gruposActivos() }}
+            </strong>
+          </div>
+        </button>
+
+      </section>
+
+
+      <section class="quick-section">
+
+        <div class="section-heading">
+
+          <div>
+
+            <h2>
+              Acciones rápidas
+            </h2>
+
+            <p>
+              Accede directamente a las
+              operaciones principales.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div class="quick-actions">
 
           <button
             type="button"
-            (click)="goToPractices()"
+            (click)="newUser()"
           >
-            Ver todas
-          </button>
-        </div>
+            <span>+</span>
 
-        <div class="panel-list">
+            <div>
+              <strong>
+                Nuevo usuario
+              </strong>
 
-          @for (
-            practica of practicasRecientes();
-            track practica.id_practica
-          ) {
-            <button
-              class="list-item"
-              type="button"
-              (click)="viewPractice(
-                practica.id_practica
-              )"
-            >
-              <div>
-                <strong>
-                  {{ practica.nombre }}
-                </strong>
-
-                <span>
-                  {{ practica.programa }}
-                  ·
-                  {{ practica.periodo_academico }}
-                </span>
-              </div>
-
-              <span
-                class="state"
-                [class.closed]="
-                  practica.estado === 'CERRADA'
-                "
-              >
-                {{ practica.estado }}
-              </span>
-            </button>
-          } @empty {
-            <div class="empty">
-              No hay prácticas registradas.
+              <small>
+                Registrar estudiante,
+                docente o coordinador
+              </small>
             </div>
-          }
+          </button>
 
-        </div>
-
-      </article>
-
-      <article class="panel">
-
-        <div class="panel-header">
-          <div>
-            <h2>Grupos recientes</h2>
-            <p>Organización actual de las prácticas</p>
-          </div>
 
           <button
             type="button"
-            (click)="goToGroups()"
+            (click)="newPractice()"
           >
-            Ver todos
+            <span>+</span>
+
+            <div>
+              <strong>
+                Nueva práctica
+              </strong>
+
+              <small>
+                Crear una práctica académica
+              </small>
+            </div>
           </button>
+
+
+          <button
+            type="button"
+            (click)="newGroup()"
+          >
+            <span>+</span>
+
+            <div>
+              <strong>
+                Nuevo grupo
+              </strong>
+
+              <small>
+                Asignar docente y estudiantes
+              </small>
+            </div>
+          </button>
+
         </div>
 
-        <div class="panel-list">
+      </section>
 
-          @for (
-            grupo of gruposRecientes();
-            track grupo.id_grupo
-          ) {
+
+      <section class="dashboard-grid">
+
+        <article class="panel">
+
+          <div class="panel-header">
+
+            <div>
+              <h2>
+                Prácticas recientes
+              </h2>
+
+              <p>
+                Últimos registros disponibles
+              </p>
+            </div>
+
             <button
-              class="list-item"
               type="button"
-              (click)="viewGroup(
-                grupo.id_grupo
-              )"
+              (click)="goToPractices()"
             >
-              <div>
-                <strong>
-                  {{ grupo.nombre }}
-                </strong>
+              Ver todas
+            </button>
 
-                <span>
-                  {{ grupo.practica }}
-                  ·
-                  {{ grupo.total_estudiantes }}
-                  integrante(s)
-                </span>
-              </div>
+          </div>
 
-              <span
-                class="state"
-                [class.closed]="
-                  grupo.estado === 'CERRADO'
+
+          <div class="panel-list">
+
+            @for (
+              practica of practicasRecientes();
+              track practica.id_practica
+            ) {
+
+              <button
+                class="list-item"
+                type="button"
+                (click)="
+                  viewPractice(
+                    practica.id_practica
+                  )
                 "
               >
-                {{ grupo.estado }}
-              </span>
-            </button>
-          } @empty {
-            <div class="empty">
-              No hay grupos registrados.
+
+                <div>
+
+                  <strong>
+                    {{ practica.nombre }}
+                  </strong>
+
+                  <span>
+                    {{ practica.programa }}
+                    ·
+                    {{
+                      practica.periodo_academico
+                    }}
+                  </span>
+
+                </div>
+
+                <span
+                  class="state"
+                  [class.closed]="
+                    practica.estado ===
+                    'CERRADA'
+                  "
+                >
+                  {{ practica.estado }}
+                </span>
+
+              </button>
+
+            } @empty {
+
+              <div class="empty">
+                No hay prácticas registradas.
+              </div>
+
+            }
+
+          </div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-header">
+
+            <div>
+              <h2>
+                Grupos recientes
+              </h2>
+
+              <p>
+                Organización actual de
+                las prácticas
+              </p>
             </div>
-          }
+
+            <button
+              type="button"
+              (click)="goToGroups()"
+            >
+              Ver todos
+            </button>
+
+          </div>
+
+
+          <div class="panel-list">
+
+            @for (
+              grupo of gruposRecientes();
+              track grupo.id_grupo
+            ) {
+
+              <button
+                class="list-item"
+                type="button"
+                (click)="
+                  viewGroup(
+                    grupo.id_grupo
+                  )
+                "
+              >
+
+                <div>
+
+                  <strong>
+                    {{ grupo.nombre }}
+                  </strong>
+
+                  <span>
+                    {{ grupo.practica }}
+                    ·
+                    {{
+                      grupo.total_estudiantes
+                    }}
+                    integrante(s)
+                  </span>
+
+                </div>
+
+                <span
+                  class="state"
+                  [class.closed]="
+                    grupo.estado ===
+                    'CERRADO'
+                  "
+                >
+                  {{ grupo.estado }}
+                </span>
+
+              </button>
+
+            } @empty {
+
+              <div class="empty">
+                No hay grupos registrados.
+              </div>
+
+            }
+
+          </div>
+
+        </article>
+
+      </section>
+
+    }
+
+
+    <!-- ================================= -->
+    <!-- DASHBOARD DOCENTE                 -->
+    <!-- ================================= -->
+
+    @if (isTeacher()) {
+
+      <section class="metrics">
+
+        <div class="metric-card">
+
+          <div class="metric-icon groups">
+            👥
+          </div>
+
+          <div>
+            <span>
+              Grupos activos asignados
+            </span>
+
+            <strong>
+              {{ gruposActivosDocente() }}
+            </strong>
+          </div>
 
         </div>
 
-      </article>
 
-    </section>
+        <div class="metric-card">
+
+          <div class="metric-icon students">
+            🎓
+          </div>
+
+          <div>
+            <span>
+              Estudiantes asignados
+            </span>
+
+            <strong>
+              {{ estudiantesAsignados() }}
+            </strong>
+          </div>
+
+        </div>
+
+
+        <div class="metric-card">
+
+          <div class="metric-icon practices">
+            📋
+          </div>
+
+          <div>
+            <span>
+              Actividades abiertas
+            </span>
+
+            <strong>
+              {{ actividadesAbiertas() }}
+            </strong>
+          </div>
+
+        </div>
+
+
+        <div class="metric-card">
+
+          <div class="metric-icon teachers">
+            ✓
+          </div>
+
+          <div>
+            <span>
+              Actividades cerradas
+            </span>
+
+            <strong>
+              {{ actividadesCerradas() }}
+            </strong>
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <section class="dashboard-grid">
+
+        <article class="panel">
+
+          <div class="panel-header">
+
+            <div>
+              <h2>
+                Mis grupos
+              </h2>
+
+              <p>
+                Grupos de práctica asignados
+              </p>
+            </div>
+
+          </div>
+
+
+          <div class="panel-list">
+
+            @for (
+              grupo of gruposRecientes();
+              track grupo.id_grupo
+            ) {
+
+              <div class="list-item">
+
+                <div>
+
+                  <strong>
+                    {{ grupo.nombre }}
+                  </strong>
+
+                  <span>
+                    {{ grupo.practica }}
+                    ·
+                    {{
+                      grupo.total_estudiantes
+                    }}
+                    estudiante(s)
+                  </span>
+
+                </div>
+
+                <span
+                  class="state"
+                  [class.closed]="
+                    grupo.estado ===
+                    'CERRADO'
+                  "
+                >
+                  {{ grupo.estado }}
+                </span>
+
+              </div>
+
+            } @empty {
+
+              <div class="empty">
+                No tienes grupos asignados.
+              </div>
+
+            }
+
+          </div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-header">
+
+            <div>
+
+              <h2>
+                Actividades recientes
+              </h2>
+
+              <p>
+                Seguimiento académico
+                de tus grupos
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="panel-list">
+
+            @for (
+              actividad of
+                actividadesRecientes();
+              track actividad.id_actividad
+            ) {
+
+              <div class="list-item">
+
+                <div>
+
+                  <strong>
+                    {{ actividad.titulo }}
+                  </strong>
+
+                  <span>
+                    Fecha límite:
+                    {{
+                      actividad.fecha_limite
+                    }}
+                    ·
+                    {{
+                      actividad.total_preguntas
+                        ?? 0
+                    }}
+                    pregunta(s)
+                  </span>
+
+                </div>
+
+                <span
+                  class="state"
+                  [class.closed]="
+                    actividad.estado ===
+                    'CERRADA'
+                  "
+                >
+                  {{ actividad.estado }}
+                </span>
+
+              </div>
+
+            } @empty {
+
+              <div class="empty">
+                No hay actividades registradas.
+              </div>
+
+            }
+
+          </div>
+
+        </article>
+
+      </section>
+
+    }
 
   }
 

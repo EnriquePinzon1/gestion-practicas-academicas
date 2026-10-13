@@ -1372,6 +1372,84 @@ app.patch(
   }
 );
 
+// ======================================================
+// CU04 - GRUPOS ASIGNADOS A DOCENTE
+// ======================================================
+
+app.get(
+  '/api/internal/groups/by-teacher/:idDocente',
+  async (req, res) => {
+    const idDocente = Number(req.params.idDocente);
+
+    if (
+      !Number.isInteger(idDocente) ||
+      idDocente <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'El identificador del docente no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            g.id_grupo,
+            g.nombre,
+            g.semestre,
+            g.estado,
+            g.id_docente,
+
+            p.id_practica,
+            p.nombre AS practica,
+            p.periodo_academico,
+
+            COUNT(ge.id_estudiante)::int
+              AS total_estudiantes
+
+          FROM practices.grupo g
+
+          INNER JOIN practices.practica p
+            ON p.id_practica = g.id_practica
+
+          LEFT JOIN practices.grupo_estudiante ge
+            ON ge.id_grupo = g.id_grupo
+
+          WHERE g.id_docente = $1
+
+          GROUP BY
+            g.id_grupo,
+            g.nombre,
+            g.semestre,
+            g.estado,
+            g.id_docente,
+            p.id_practica,
+            p.nombre,
+            p.periodo_academico
+
+          ORDER BY g.id_grupo DESC
+        `,
+        [idDocente]
+      );
+
+      return res.json({
+        data: result.rows,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando grupos del docente:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar los grupos asignados al docente',
+      });
+    }
+  }
+);
+
 const port = process.env.PORT || 3335;
 
 const server = app.listen(port, () => {

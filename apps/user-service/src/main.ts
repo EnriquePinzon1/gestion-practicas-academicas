@@ -856,6 +856,69 @@ app.get('/api/internal/students/available', async (_req, res) => {
   }
 });
 
+// ======================================================
+// CU04 - DOCENTE POR AUTH USER
+// ======================================================
+
+app.get(
+  '/api/internal/teachers/by-auth/:authUserId',
+  async (req, res) => {
+    const authUserId = req.params.authUserId;
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            d.id_docente,
+            u.id_usuario,
+            u.auth_user_id,
+            u.nombres,
+            u.apellidos,
+            u.correo,
+            u.estado,
+            r.nombre AS rol
+          FROM users.docente_asesor d
+          INNER JOIN users.usuario u
+            ON u.id_usuario = d.id_usuario
+          INNER JOIN users.rol r
+            ON r.id_rol = u.id_rol
+          WHERE u.auth_user_id = $1
+          LIMIT 1
+        `,
+        [authUserId]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Docente Asesor no encontrado',
+        });
+      }
+
+      const docente = result.rows[0];
+
+      if (docente.estado !== 'ACTIVO') {
+        return res.status(403).json({
+          message: 'El Docente Asesor se encuentra inactivo',
+        });
+      }
+
+      return res.json({
+        data: docente,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando docente por auth:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el Docente Asesor',
+      });
+    }
+  }
+);
+
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {

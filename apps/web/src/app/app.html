@@ -1,59 +1,138 @@
 @if (isLoginPage()) {
+
   <router-outlet></router-outlet>
+
 } @else {
+
   <div class="app-shell">
 
     <aside class="sidebar">
+
       <div class="brand">
-        <div class="brand-mark">GP</div>
+
+        <div class="brand-mark">
+          GP
+        </div>
 
         <div>
-          <strong>Gestión de Prácticas</strong>
-          <span>Académicas</span>
+          <strong>
+            Gestión de Prácticas
+          </strong>
+
+          <span>
+            Académicas
+          </span>
         </div>
+
       </div>
 
       <div class="role">
-        <span class="role-label">
-          Coordinador de Prácticas
-        </span>
+
+        @if (
+          userRole() === 'COORDINADOR'
+        ) {
+          <span class="role-label">
+            Coordinador de Prácticas
+          </span>
+        }
+
+        @if (
+          userRole() === 'DOCENTE'
+        ) {
+          <span class="role-label">
+            Docente Asesor
+          </span>
+        }
+
       </div>
 
       <nav class="navigation">
+
         <a
           routerLink="/dashboard"
           routerLinkActive="active"
         >
-          <span class="nav-icon">▦</span>
+          <span class="nav-icon">
+            ▦
+          </span>
+
           Panel principal
         </a>
 
-        <a
-          routerLink="/usuarios"
-          routerLinkActive="active"
-        >
-          <span class="nav-icon">♙</span>
-          Usuarios
-        </a>
+        @if (
+          userRole() === 'COORDINADOR'
+        ) {
 
-        <a
-          routerLink="/practicas"
-          routerLinkActive="active"
-        >
-          <span class="nav-icon">▤</span>
-          Prácticas
-        </a>
+          <a
+            routerLink="/usuarios"
+            routerLinkActive="active"
+          >
+            <span class="nav-icon">
+              ♙
+            </span>
 
-        <a
-          routerLink="/grupos"
-          routerLinkActive="active"
-        >
-          <span class="nav-icon">♟</span>
-          Grupos
-        </a>
+            Usuarios
+          </a>
+
+          <a
+            routerLink="/practicas"
+            routerLinkActive="active"
+          >
+            <span class="nav-icon">
+              ▤
+            </span>
+
+            Prácticas
+          </a>
+
+          <a
+            routerLink="/grupos"
+            routerLinkActive="active"
+          >
+            <span class="nav-icon">
+              ♟
+            </span>
+
+            Grupos
+          </a>
+
+        }
+
+        @if (
+          userRole() === 'DOCENTE'
+        ) {
+
+          <div
+            class="nav-role-info"
+            style="
+              padding: 12px 16px;
+              font-size: 12px;
+              opacity: 0.65;
+            "
+          >
+            Gestión de seguimiento
+          </div>
+
+        }
+
       </nav>
 
       <div class="sidebar-footer">
+
+        @if (userName()) {
+
+          <div
+            style="
+              padding: 12px 16px;
+              font-size: 12px;
+              opacity: 0.75;
+            "
+          >
+            {{ userName() }}
+          </div>
+
+        }
+
         <button
           type="button"
           (click)="logout()"
@@ -61,12 +140,18 @@
           <span>↪</span>
           Cerrar sesión
         </button>
+
       </div>
+
     </aside>
 
     <main class="main-content">
-      <router-outlet></router-outlet>
+
+      <router-outlet>
+      </router-outlet>
+
     </main>
 
   </div>
+
 }

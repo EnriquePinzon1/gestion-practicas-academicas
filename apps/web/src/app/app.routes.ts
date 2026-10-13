@@ -15,12 +15,19 @@ import { PracticeDetail } from './pages/practices/practice-detail';
 import { Groups } from './pages/groups/groups';
 import { GroupForm } from './pages/groups/group-form';
 import { GroupDetail } from './pages/groups/group-detail';
+import { ResetPassword } from
+  './pages/reset-password/reset-password';
+
 
 export const appRoutes: Route[] = [
   {
     path: 'login',
     component: Login,
   },
+{
+  path: 'reset-password',
+  component: ResetPassword,
+},
   {
     path: 'dashboard',
     component: Dashboard,

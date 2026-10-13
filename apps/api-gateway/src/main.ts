@@ -156,6 +156,88 @@ async function requireCoordinator(
 }
 
 // ========================================================
+// MIDDLEWARE: DOCENTE ASESOR ACTIVO
+// ========================================================
+
+async function requireTeacher(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const authUser = res.locals.user;
+
+    if (!authUser?.id) {
+      return res.status(401).json({
+        message: 'Usuario no autenticado',
+      });
+    }
+
+    const response = await fetch(
+      `http://localhost:3334/api/internal/teachers/by-auth/${authUser.id}`
+    );
+
+    if (!response.ok) {
+      return res.status(403).json({
+        message:
+          'No existe un perfil de Docente Asesor habilitado para este usuario',
+      });
+    }
+
+    const body = (await response.json()) as {
+      data?: {
+        id_docente: number;
+        id_usuario: number;
+        auth_user_id: string;
+        nombres: string;
+        apellidos: string;
+        correo: string;
+        estado: string;
+        rol: string;
+      };
+    };
+
+    const teacher = body.data;
+
+    if (!teacher) {
+      return res.status(403).json({
+        message:
+          'No fue posible obtener el perfil del Docente Asesor',
+      });
+    }
+
+    if (teacher.estado !== 'ACTIVO') {
+      return res.status(403).json({
+        message:
+          'El Docente Asesor se encuentra inactivo',
+      });
+    }
+
+    if (teacher.rol !== 'DOCENTE') {
+      return res.status(403).json({
+        message:
+          'No tiene permisos de Docente Asesor',
+      });
+    }
+
+    res.locals.teacher = teacher;
+
+    next();
+  } catch (error) {
+    console.error(
+      'Error validating teacher:',
+      error
+    );
+
+    return res.status(503).json({
+      message:
+        'No fue posible validar los permisos del Docente Asesor',
+    });
+  }
+}
+
+
+// ========================================================
 // GATEWAY HEALTH
 // ========================================================
 
@@ -173,14 +255,64 @@ app.get('/api', (_req, res) => {
 app.get(
   '/api/auth/me',
   requireAuth,
-  (_req, res) => {
-    const user = res.locals.user;
+  async (_req, res) => {
+    try {
+      const user = res.locals.user;
 
-    res.json({
-      authenticated: true,
-      id: user.id,
-      email: user.email,
-    });
+      const response = await fetch(
+        `http://localhost:3334/api/internal/users/by-auth/${user.id}`
+      );
+
+      if (!response.ok) {
+        return res.status(403).json({
+          message:
+            'No existe un perfil habilitado para este usuario',
+        });
+      }
+
+      const profile = await response.json();
+
+      if (profile.estado !== 'ACTIVO') {
+        return res.status(403).json({
+          message:
+            'El usuario se encuentra inactivo',
+        });
+      }
+
+      return res.json({
+        authenticated: true,
+
+        auth_user_id: user.id,
+
+        id_usuario:
+          profile.id_usuario,
+
+        nombres:
+          profile.nombres,
+
+        apellidos:
+          profile.apellidos,
+
+        correo:
+          profile.correo,
+
+        estado:
+          profile.estado,
+
+        rol:
+          profile.rol,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando perfil autenticado:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'No fue posible obtener el perfil del usuario',
+      });
+    }
   }
 );
 
@@ -958,6 +1090,292 @@ app.patch(
 
       return res.status(503).json({
         message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// ========================================================
+// CU04 - DOCENTE: GRUPOS ASIGNADOS
+// ========================================================
+
+app.get(
+  '/api/teacher/groups',
+  requireAuth,
+  requireTeacher,
+  async (_req, res) => {
+    try {
+      const teacher = res.locals.teacher;
+
+      const response = await fetch(
+        'http://localhost:3335/api/internal/groups/by-teacher/' +
+          teacher.id_docente
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando grupos del docente:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+
+// ========================================================
+// CU04 - LISTAR ACTIVIDADES DEL DOCENTE
+// ========================================================
+
+app.get(
+  '/api/activities',
+  requireAuth,
+  requireTeacher,
+  async (req, res) => {
+    try {
+      const teacher = res.locals.teacher;
+
+      const groupId =
+        typeof req.query.groupId === 'string'
+          ? req.query.groupId
+          : '';
+
+      const query = groupId
+        ? '?groupId=' +
+          encodeURIComponent(groupId)
+        : '';
+
+      const response = await fetch(
+        'http://localhost:3336/api/activities/teacher/' +
+          teacher.id_docente +
+          query
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando actividades:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Activity Service no disponible',
+      });
+    }
+  }
+);
+
+
+// ========================================================
+// CU04 - PUBLICAR ACTIVIDAD
+// ========================================================
+
+app.post(
+  '/api/activities',
+  requireAuth,
+  requireTeacher,
+  async (req, res) => {
+    try {
+      const teacher = res.locals.teacher;
+
+      const response = await fetch(
+        'http://localhost:3336/api/activities',
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+
+          body: JSON.stringify({
+            ...req.body,
+
+            // El Gateway impone el docente real
+            id_docente:
+              teacher.id_docente,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error publicando actividad:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Activity Service no disponible',
+      });
+    }
+  }
+);
+
+
+// ========================================================
+// CU04 - DETALLE DE ACTIVIDAD
+// ========================================================
+
+app.get(
+  '/api/activities/:id',
+  requireAuth,
+  requireTeacher,
+  async (req, res) => {
+    try {
+      const teacher = res.locals.teacher;
+
+      const response = await fetch(
+        'http://localhost:3336/api/activities/' +
+          encodeURIComponent(
+            String(req.params.id)
+          ) +
+          '?teacherId=' +
+          teacher.id_docente
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando actividad:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Activity Service no disponible',
+      });
+    }
+  }
+);
+
+
+// ========================================================
+// CU04 - ACTUALIZAR ACTIVIDAD
+// ========================================================
+
+app.patch(
+  '/api/activities/:id',
+  requireAuth,
+  requireTeacher,
+  async (req, res) => {
+    try {
+      const teacher = res.locals.teacher;
+
+      const response = await fetch(
+        'http://localhost:3336/api/activities/' +
+          encodeURIComponent(
+          String(req.params.id)
+          ),
+        {
+          method: 'PATCH',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+
+          body: JSON.stringify({
+            ...req.body,
+
+            // No aceptamos un docente enviado
+            // por el navegador.
+            id_docente:
+              teacher.id_docente,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error actualizando actividad:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Activity Service no disponible',
+      });
+    }
+  }
+);
+
+
+// ========================================================
+// CU04 - CERRAR ACTIVIDAD
+// ========================================================
+
+app.patch(
+  '/api/activities/:id/status',
+  requireAuth,
+  requireTeacher,
+  async (req, res) => {
+    try {
+      const teacher = res.locals.teacher;
+
+      const response = await fetch(
+        'http://localhost:3336/api/activities/' +
+          encodeURIComponent(
+            String(req.params.id)
+          ) +
+          '/status',
+        {
+          method: 'PATCH',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+
+          body: JSON.stringify({
+            id_docente:
+              teacher.id_docente,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error cerrando actividad:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Activity Service no disponible',
       });
     }
   }
