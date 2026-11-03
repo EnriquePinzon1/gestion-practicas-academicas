@@ -1133,6 +1133,90 @@ app.get(
 
 
 // ========================================================
+// CU04 - DOCENTE: DETALLE DE GRUPO ASIGNADO
+// ========================================================
+
+app.get(
+  '/api/teacher/groups/:id',
+  requireAuth,
+  requireTeacher,
+  async (req, res) => {
+    try {
+      const teacher = res.locals.teacher;
+      const idGrupo = Number(req.params.id);
+
+      if (
+        !Number.isInteger(idGrupo) ||
+        idGrupo <= 0
+      ) {
+        return res.status(400).json({
+          message:
+            'El identificador del grupo no es válido',
+        });
+      }
+
+      // Verificar que el grupo pertenezca
+      // realmente al docente autenticado.
+      const groupsResponse = await fetch(
+        'http://localhost:3335/api/internal/groups/by-teacher/' +
+          teacher.id_docente
+      );
+
+      if (!groupsResponse.ok) {
+        return res.status(503).json({
+          message:
+            'No fue posible validar los grupos del docente',
+        });
+      }
+
+      const groupsBody =
+        (await groupsResponse.json()) as {
+          data?: Array<{
+            id_grupo: number;
+          }>;
+        };
+
+      const belongsToTeacher =
+        (groupsBody.data ?? []).some(
+          (group) =>
+            Number(group.id_grupo) ===
+            idGrupo
+        );
+
+      if (!belongsToTeacher) {
+        return res.status(403).json({
+          message:
+            'El grupo seleccionado no pertenece al Docente Asesor',
+        });
+      }
+
+      const response = await fetch(
+        'http://localhost:3335/api/groups/' +
+          idGrupo
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+
+    } catch (error) {
+      console.error(
+        'Error consultando detalle del grupo del docente:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+
+// ========================================================
 // CU04 - LISTAR ACTIVIDADES DEL DOCENTE
 // ========================================================
 

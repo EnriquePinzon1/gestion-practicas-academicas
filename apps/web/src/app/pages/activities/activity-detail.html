@@ -1,0 +1,316 @@
+<section class="detail-page">
+
+  <header class="page-header">
+
+    <div>
+      <span class="eyebrow">
+        Actividades de seguimiento
+      </span>
+
+      <h1>
+        Detalle de actividad
+      </h1>
+    </div>
+
+    <button
+      type="button"
+      class="secondary-button"
+      (click)="back()"
+    >
+      ← Volver
+    </button>
+
+  </header>
+
+
+  <div
+  class="ui-toast-stack"
+  aria-live="polite"
+>
+
+  @if (errorMessage()) {
+
+    <div class="ui-toast error">
+      {{ errorMessage() }}
+    </div>
+
+  }
+
+  @if (successMessage()) {
+
+    <div class="ui-toast success">
+      {{ successMessage() }}
+    </div>
+
+  }
+
+</div>
+
+  @if (successMessage()) {
+    <div class="alert success">
+      {{ successMessage() }}
+    </div>
+  }
+
+
+  @if (loading()) {
+
+    <div class="loading">
+      Cargando actividad...
+    </div>
+
+  } @else if (activity(); as current) {
+
+    <section class="hero-card">
+
+      <div>
+
+        <span class="group-label">
+          {{ group()?.nombre ?? 'Grupo' }}
+        </span>
+
+        <h2>
+          {{ current.titulo }}
+        </h2>
+
+        <p>
+          {{ current.descripcion }}
+        </p>
+
+      </div>
+
+      <span
+        class="state"
+        [class.closed]="
+          current.estado === 'CERRADA'
+        "
+      >
+        {{ current.estado }}
+      </span>
+
+    </section>
+
+
+    <section class="info-grid">
+
+      <article class="info-card">
+        <span>Práctica</span>
+        <strong>
+          {{ group()?.practica ?? '-' }}
+        </strong>
+      </article>
+
+      <article class="info-card">
+        <span>Fecha límite</span>
+        <strong>
+          {{
+            formatDate(
+              current.fecha_limite
+            )
+          }}
+        </strong>
+      </article>
+
+      <article class="info-card">
+        <span>Hora límite</span>
+        <strong>
+          {{
+            formatTime(
+              current.hora_limite
+            )
+          }}
+        </strong>
+      </article>
+
+      <article class="info-card">
+        <span>Preguntas</span>
+        <strong>
+          {{ current.preguntas.length }}
+        </strong>
+      </article>
+
+    </section>
+
+
+    <section class="panel">
+
+      <div class="panel-header">
+        <div>
+          <h2>Preguntas</h2>
+          <p>
+            Preguntas publicadas para
+            esta actividad.
+          </p>
+        </div>
+      </div>
+
+      <div class="questions">
+
+        @for (
+          question of current.preguntas;
+          track question.id_pregunta
+        ) {
+
+          <article class="question">
+
+            <span>
+              {{ question.orden }}
+            </span>
+
+            <p>
+              {{ question.enunciado }}
+            </p>
+
+          </article>
+
+        }
+
+      </div>
+
+    </section>
+
+
+    <section class="panel">
+
+      <div class="panel-header deliveries-header">
+
+        <div>
+          <h2>Entregas</h2>
+
+          <p>
+            Estado de los estudiantes
+            pertenecientes al grupo.
+          </p>
+        </div>
+
+        <select
+          [ngModel]="deliveryFilter()"
+          (ngModelChange)="
+            deliveryFilter.set($event)
+          "
+        >
+          <option value="TODOS">
+            Todas
+          </option>
+
+          <option value="ENTREGADA">
+            Entregadas
+          </option>
+
+          <option value="PENDIENTE">
+            Pendientes
+          </option>
+        </select>
+
+      </div>
+
+
+      <div class="deliveries">
+
+        @for (
+          delivery of
+            filteredDeliveries();
+          track delivery.id_estudiante
+        ) {
+
+          <article class="delivery-row">
+
+            <div class="student">
+
+              <div class="avatar">
+                {{
+                  studentName(
+                    delivery
+                  ).charAt(0)
+                }}
+              </div>
+
+              <div>
+
+                <strong>
+                  {{
+                    studentName(
+                      delivery
+                    )
+                  }}
+                </strong>
+
+                <span>
+                  {{
+                    delivery.codigo_estudiante
+                      ?? delivery.correo
+                      ?? ''
+                  }}
+                </span>
+
+              </div>
+
+            </div>
+
+
+            <span
+              class="delivery-state pending"
+            >
+              {{ delivery.estadoEntrega }}
+            </span>
+
+          </article>
+
+        } @empty {
+
+          <div class="empty">
+            No hay estudiantes para
+            el filtro seleccionado.
+          </div>
+
+        }
+
+      </div>
+
+    </section>
+
+
+    <div class="detail-actions">
+
+      @if (
+        current.estado === 'ABIERTA'
+      ) {
+
+        <button
+          type="button"
+          class="secondary-button"
+          (click)="editActivity()"
+        >
+          Editar actividad
+        </button>
+
+
+        <button
+          type="button"
+          class="danger-button"
+          [class.ui-loading]="closing()"
+          [disabled]="closing()"
+          (click)="closeActivity()"
+        >
+          {{
+            closing()
+              ? 'Cerrando...'
+              : 'Cerrar actividad'
+          }}
+        </button>
+
+      } @else {
+
+        <div class="closed-note">
+          Esta actividad se encuentra
+          cerrada y ya no admite
+          modificaciones.
+        </div>
+
+      }
+
+    </div>
+
+  }
+
+</section>

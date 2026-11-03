@@ -1,0 +1,374 @@
+<section class="activities-page">
+
+  <header class="page-header">
+
+    <div>
+
+      <span class="eyebrow">
+        Docente Asesor
+      </span>
+
+      <h1>
+        Actividades de Seguimiento
+      </h1>
+
+      <p>
+        Administra las actividades
+        académicas asignadas a tus grupos
+        de práctica.
+      </p>
+
+    </div>
+
+    <button
+      type="button"
+      class="primary-button"
+      [disabled]="activeGroups().length === 0"
+      (click)="newActivity()"
+    >
+      + Nueva actividad
+    </button>
+
+  </header>
+
+
+  @if (errorMessage()) {
+
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+
+  }
+
+
+  <section class="summary-grid">
+
+    <article class="summary-card">
+
+      <span>
+        Grupos asignados
+      </span>
+
+      <strong>
+        {{ groups().length }}
+      </strong>
+
+    </article>
+
+    <article class="summary-card">
+
+      <span>
+        Grupos activos
+      </span>
+
+      <strong>
+        {{ activeGroups().length }}
+      </strong>
+
+    </article>
+
+    <article class="summary-card">
+
+      <span>
+        Actividades
+      </span>
+
+      <strong>
+        {{ activities().length }}
+      </strong>
+
+    </article>
+
+  </section>
+
+
+  <section class="filters">
+
+    <div class="field search-field">
+
+      <label for="search">
+        Buscar
+      </label>
+
+      <input
+        id="search"
+        type="text"
+        placeholder="Título, descripción o grupo..."
+        [ngModel]="searchTerm()"
+        (ngModelChange)="
+          searchTerm.set($event)
+        "
+      />
+
+    </div>
+
+
+    <div class="field">
+
+      <label for="group">
+        Grupo
+      </label>
+
+      <select
+        id="group"
+        [ngModel]="groupFilter()"
+        (ngModelChange)="
+          groupFilter.set($event)
+        "
+      >
+
+        <option value="TODOS">
+          Todos los grupos
+        </option>
+
+        @for (
+          group of groups();
+          track group.id_grupo
+        ) {
+
+          <option
+            [value]="group.id_grupo"
+          >
+            {{ group.nombre }}
+            ·
+            {{ group.estado }}
+          </option>
+
+        }
+
+      </select>
+
+    </div>
+
+
+    <div class="field">
+
+      <label for="status">
+        Estado
+      </label>
+
+      <select
+        id="status"
+        [ngModel]="statusFilter()"
+        (ngModelChange)="
+          statusFilter.set($event)
+        "
+      >
+
+        <option value="TODAS">
+          Todas
+        </option>
+
+        <option value="ABIERTA">
+          Abiertas
+        </option>
+
+        <option value="CERRADA">
+          Cerradas
+        </option>
+
+      </select>
+
+    </div>
+
+
+    <button
+      type="button"
+      class="secondary-button clear-button"
+      (click)="clearFilters()"
+    >
+      Limpiar
+    </button>
+
+  </section>
+
+
+  <section class="activity-panel">
+
+    <div class="panel-heading">
+
+      <div>
+
+        <h2>
+          Actividades
+        </h2>
+
+        <p>
+          {{
+            filteredActivities().length
+          }}
+          resultado(s)
+        </p>
+
+      </div>
+
+    </div>
+
+
+    @if (loading()) {
+
+      <div class="loading">
+        Cargando actividades...
+      </div>
+
+    } @else {
+
+      <div class="activity-list">
+
+        @for (
+          activity of
+            filteredActivities();
+          track activity.id_actividad
+        ) {
+
+          <article class="activity-card">
+
+            <div class="activity-main">
+
+              <div class="activity-title-row">
+
+                <div>
+
+                  <span class="group-name">
+                    {{
+                      activity.grupo?.nombre
+                        ?? 'Grupo'
+                    }}
+                  </span>
+
+                  <h3>
+                    {{ activity.titulo }}
+                  </h3>
+
+                </div>
+
+                <span
+                  class="state"
+                  [class.closed]="
+                    activity.estado ===
+                    'CERRADA'
+                  "
+                >
+                  {{ activity.estado }}
+                </span>
+
+              </div>
+
+
+              <p class="description">
+                {{ activity.descripcion }}
+              </p>
+
+
+              <div class="activity-meta">
+
+                <span>
+                  <strong>
+                    Práctica:
+                  </strong>
+
+                  {{
+                    activity.grupo?.practica
+                      ?? '-'
+                  }}
+                </span>
+
+                <span>
+                  <strong>
+                    Fecha límite:
+                  </strong>
+
+                  {{
+                    formatDate(
+                      activity.fecha_limite
+                    )
+                  }}
+
+                  {{
+                    formatTime(
+                      activity.hora_limite
+                    )
+                  }}
+                </span>
+
+                <span>
+                  <strong>
+                    Preguntas:
+                  </strong>
+
+                  {{
+                    activity.total_preguntas
+                  }}
+                </span>
+
+              </div>
+
+            </div>
+
+
+            <div class="activity-actions">
+
+              <button
+                type="button"
+                class="secondary-button"
+                (click)="
+                  viewActivity(
+                    activity.id_actividad
+                  )
+                "
+              >
+                Ver
+              </button>
+
+              @if (
+                activity.estado ===
+                'ABIERTA'
+              ) {
+
+                <button
+                  type="button"
+                  class="secondary-button"
+                  (click)="
+                    editActivity(
+                      activity.id_actividad
+                    )
+                  "
+                >
+                  Editar
+                </button>
+
+              }
+
+            </div>
+
+          </article>
+
+        } @empty {
+
+          <div class="empty-state">
+
+            <div class="empty-icon">
+              📋
+            </div>
+
+            <h3>
+              No hay actividades
+            </h3>
+
+            <p>
+              No existen actividades que
+              coincidan con los filtros
+              seleccionados.
+            </p>
+
+          </div>
+
+        }
+
+      </div>
+
+    }
+
+  </section>
+
+</section>

@@ -3,6 +3,8 @@ import { authGuard } from './core/guards/auth.guard';
 
 import { Dashboard } from './pages/dashboard/dashboard';
 import { Login } from './pages/login/login';
+import { ResetPassword } from
+  './pages/reset-password/reset-password';
 
 import { Users } from './pages/users/users';
 import { UserForm } from './pages/users/user-form';
@@ -15,91 +17,164 @@ import { PracticeDetail } from './pages/practices/practice-detail';
 import { Groups } from './pages/groups/groups';
 import { GroupForm } from './pages/groups/group-form';
 import { GroupDetail } from './pages/groups/group-detail';
-import { ResetPassword } from
-  './pages/reset-password/reset-password';
 
+import { Activities } from
+  './pages/activities/activities';
+
+import { ActivityForm } from
+  './pages/activities/activity-form';
+
+import { ActivityDetail } from
+  './pages/activities/activity-detail';
 
 export const appRoutes: Route[] = [
+
+  // ==========================================
+  // AUTENTICACIÓN
+  // ==========================================
+
   {
     path: 'login',
     component: Login,
   },
-{
-  path: 'reset-password',
-  component: ResetPassword,
-},
+
+  {
+    path: 'reset-password',
+    component: ResetPassword,
+  },
+
+  // ==========================================
+  // DASHBOARD
+  // ==========================================
+
   {
     path: 'dashboard',
     component: Dashboard,
     canActivate: [authGuard],
   },
 
+  // ==========================================
+  // CU01 - USUARIOS
+  // ==========================================
+
   {
     path: 'usuarios',
     component: Users,
     canActivate: [authGuard],
   },
+
   {
     path: 'usuarios/nuevo',
     component: UserForm,
     canActivate: [authGuard],
   },
+
   {
     path: 'usuarios/:id/editar',
     component: UserForm,
     canActivate: [authGuard],
   },
+
   {
     path: 'usuarios/:id',
     component: UserDetail,
     canActivate: [authGuard],
   },
 
+  // ==========================================
+  // CU02 - PRÁCTICAS
+  // ==========================================
+
   {
     path: 'practicas',
     component: Practices,
     canActivate: [authGuard],
   },
+
   {
     path: 'practicas/nueva',
     component: PracticeForm,
     canActivate: [authGuard],
   },
+
   {
     path: 'practicas/:id/editar',
     component: PracticeForm,
     canActivate: [authGuard],
   },
+
   {
     path: 'practicas/:id',
     component: PracticeDetail,
     canActivate: [authGuard],
   },
+
+  // ==========================================
+  // CU03 - GRUPOS
+  // ==========================================
+
   {
-  path: 'grupos',
-  component: Groups,
-  canActivate: [authGuard],
+    path: 'grupos',
+    component: Groups,
+    canActivate: [authGuard],
   },
+
   {
-  path: 'grupos/nuevo',
-  component: GroupForm,
-  canActivate: [authGuard],
+    path: 'grupos/nuevo',
+    component: GroupForm,
+    canActivate: [authGuard],
   },
+
   {
-  path: 'grupos/:id/editar',
-  component: GroupForm,
-  canActivate: [authGuard],
+    path: 'grupos/:id/editar',
+    component: GroupForm,
+    canActivate: [authGuard],
   },
+
   {
-  path: 'grupos/:id',
-  component: GroupDetail,
-  canActivate: [authGuard],
+    path: 'grupos/:id',
+    component: GroupDetail,
+    canActivate: [authGuard],
   },
+
+  // ==========================================
+  // CU04 - ACTIVIDADES
+  // ==========================================
+
+{
+  path: 'actividades',
+  component: Activities,
+  canActivate: [authGuard],
+},
+
+{
+  path: 'actividades/nueva',
+  component: ActivityForm,
+  canActivate: [authGuard],
+},
+
+{
+  path: 'actividades/:id/editar',
+  component: ActivityForm,
+  canActivate: [authGuard],
+},
+
+{
+  path: 'actividades/:id',
+  component: ActivityDetail,
+  canActivate: [authGuard],
+},
+
+  // ==========================================
+  // RUTAS POR DEFECTO
+  // ==========================================
+
   {
     path: '',
     redirectTo: 'login',
     pathMatch: 'full',
   },
+
   {
     path: '**',
     redirectTo: 'login',
