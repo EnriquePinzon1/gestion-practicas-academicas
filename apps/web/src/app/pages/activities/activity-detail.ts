@@ -67,6 +67,28 @@ interface Submission {
     contenido: string;
   }[];
   evidencias: Evidencia[];
+  calificacion: number | null;
+  comentario_docente: string | null;
+  calificado_en: string | null;
+}
+
+// Campos de la fila que usa el formulario de retroalimentación
+type FeedbackTarget = Pick<
+  Submission,
+  | 'id_actividad_estudiante'
+  | 'id_entrega'
+  | 'calificacion'
+  | 'comentario_docente'
+>;
+
+interface FeedbackResponse {
+  data: {
+    id_entrega: number;
+    calificacion: number;
+    comentario_docente: string | null;
+    calificado_en: string;
+  };
+  message: string;
 }
 
 interface GroupDetail {
@@ -115,6 +137,15 @@ export class ActivityDetail {
 
   expandedId = signal<number | null>(null);
 
+  // El docente califica solo entregas definitivas
+  // (actividad cerrada o con plazo vencido).
+  canGrade = signal(false);
+
+  // Formulario de retroalimentación de la fila expandida
+  gradeInput = signal('');
+  commentInput = signal('');
+  savingFeedback = signal(false);
+
   // Entregas según el snapshot actividad_estudiante
   // (estudiantes del grupo al publicar la actividad).
   // Los integrantes del grupo solo completan el nombre
@@ -148,6 +179,13 @@ export class ActivityDetail {
     () =>
       this.submissions().filter(
         (s) => s.estado_entrega === 'ENTREGADA'
+      ).length
+  );
+
+  totalCalificadas = computed(
+    () =>
+      this.submissions().filter(
+        (s) => s.calificacion !== null
       ).length
   );
 
@@ -223,6 +261,7 @@ export class ActivityDetail {
       const submissionsResponse =
         await this.api.get<{
           data: {
+            puede_calificar: boolean;
             estudiantes: Submission[];
           };
         }>(
@@ -231,6 +270,10 @@ export class ActivityDetail {
 
       this.submissions.set(
         submissionsResponse.data.estudiantes
+      );
+
+      this.canGrade.set(
+        submissionsResponse.data.puede_calificar
       );
 
     } catch (error) {
@@ -311,6 +354,8 @@ export class ActivityDetail {
             : activity
       );
 
+      this.canGrade.set(true);
+
       this.successMessage.set(
         response.message ??
           'Actividad cerrada correctamente.'
@@ -349,10 +394,87 @@ export class ActivityDetail {
       : '-';
   }
 
-  toggleAnswers(id: number) {
-    this.expandedId.set(
-      this.expandedId() === id ? null : id
+  toggleAnswers(delivery: FeedbackTarget) {
+    const id = delivery.id_actividad_estudiante;
+
+    if (this.expandedId() === id) {
+      this.expandedId.set(null);
+      return;
+    }
+
+    this.expandedId.set(id);
+
+    this.gradeInput.set(
+      delivery.calificacion === null
+        ? ''
+        : delivery.calificacion.toFixed(1)
     );
+
+    this.commentInput.set(
+      delivery.comentario_docente ?? ''
+    );
+  }
+
+  async saveFeedback(delivery: FeedbackTarget) {
+    const current = this.activity();
+
+    if (!current || !delivery.id_entrega) {
+      return;
+    }
+
+    const raw = this.gradeInput().trim().replace(',', '.');
+    const calificacion = Number(raw);
+
+    if (
+      raw === '' ||
+      !Number.isFinite(calificacion) ||
+      calificacion < 0 ||
+      calificacion > 5 ||
+      !/^\d(\.\d)?$/.test(raw)
+    ) {
+      this.errorMessage.set(
+        'La calificación debe estar entre 0.0 y 5.0 con máximo un decimal.'
+      );
+      return;
+    }
+
+    this.savingFeedback.set(true);
+    this.errorMessage.set('');
+    this.successMessage.set('');
+
+    try {
+      const response = await this.api.put<FeedbackResponse>(
+        `/activities/${current.id_actividad}/submissions/${delivery.id_entrega}/feedback`,
+        {
+          calificacion,
+          comentario: this.commentInput().trim() || null,
+        }
+      );
+
+      this.submissions.update((list) =>
+        list.map((s) =>
+          s.id_entrega === delivery.id_entrega
+            ? {
+                ...s,
+                calificacion: response.data.calificacion,
+                comentario_docente:
+                  response.data.comentario_docente,
+                calificado_en: response.data.calificado_en,
+              }
+            : s
+        )
+      );
+
+      this.successMessage.set(response.message);
+    } catch (error) {
+      this.errorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible guardar la retroalimentación.'
+      );
+    } finally {
+      this.savingFeedback.set(false);
+    }
   }
 
   // URL firmada de corta duración, pedida al descargar

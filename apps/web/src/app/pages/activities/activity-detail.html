@@ -180,7 +180,8 @@
           <p>
             {{ totalEntregadas() }} de
             {{ submissions().length }}
-            estudiantes han entregado.
+            estudiantes han entregado ·
+            {{ totalCalificadas() }} calificadas.
           </p>
         </div>
 
@@ -259,14 +260,22 @@
                 <button
                   type="button"
                   class="link-button"
-                  (click)="toggleAnswers(delivery.id_actividad_estudiante)"
+                  (click)="toggleAnswers(delivery)"
                 >
                   {{
                     expandedId() === delivery.id_actividad_estudiante
-                      ? 'Ocultar respuestas'
-                      : 'Ver respuestas'
+                      ? 'Ocultar'
+                      : canGrade() && delivery.calificacion === null
+                        ? 'Revisar y calificar'
+                        : 'Ver respuestas'
                   }}
                 </button>
+              }
+
+              @if (delivery.calificacion !== null) {
+                <span class="grade-badge">
+                  {{ delivery.calificacion.toFixed(1) }}
+                </span>
               }
 
               <span
@@ -300,6 +309,68 @@
                     [evidencias]="delivery.evidencias"
                     (download)="downloadEvidence($event)"
                   />
+                </div>
+
+                <div class="feedback">
+                  <strong>Retroalimentación</strong>
+
+                  @if (canGrade()) {
+                    <div class="feedback-form">
+                      <label>
+                        <span>Calificación (0.0 – 5.0)</span>
+                        <input
+                          type="text"
+                          inputmode="decimal"
+                          maxlength="3"
+                          placeholder="Ej. 4.5"
+                          [ngModel]="gradeInput()"
+                          (ngModelChange)="gradeInput.set($event)"
+                        />
+                      </label>
+
+                      <label>
+                        <span>Comentario (opcional)</span>
+                        <textarea
+                          rows="3"
+                          maxlength="2000"
+                          placeholder="Observaciones para el estudiante"
+                          [ngModel]="commentInput()"
+                          (ngModelChange)="commentInput.set($event)"
+                        ></textarea>
+                      </label>
+
+                      <div class="feedback-actions">
+                        @if (delivery.calificado_en) {
+                          <small>
+                            Última calificación:
+                            {{ delivery.calificado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                          </small>
+                        }
+
+                        <button
+                          type="button"
+                          class="primary-button"
+                          [class.ui-loading]="savingFeedback()"
+                          [disabled]="savingFeedback()"
+                          (click)="saveFeedback(delivery)"
+                        >
+                          {{
+                            savingFeedback()
+                              ? 'Guardando...'
+                              : delivery.calificacion === null
+                                ? 'Guardar calificación'
+                                : 'Actualizar calificación'
+                          }}
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <p class="feedback-note">
+                      Podrá calificar cuando la actividad se cierre
+                      o venza su fecha límite; hasta entonces el
+                      estudiante aún puede modificar su entrega.
+                    </p>
+                  }
                 </div>
               </div>
             }

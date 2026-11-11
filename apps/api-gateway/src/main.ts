@@ -1893,6 +1893,35 @@ app.get(
     )
 );
 
+// Calificación y comentario sobre una entrega.
+// El docente sale del token, nunca del cuerpo.
+app.put(
+  '/api/activities/:id/submissions/:idEntrega/feedback',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/activities/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/submissions/' +
+        encodeURIComponent(String(req.params.idEntrega)) +
+        '/feedback',
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          calificacion: req.body?.calificacion,
+          comentario: req.body?.comentario,
+          id_docente: res.locals.teacher.id_docente,
+        }),
+      },
+      'Error registrando retroalimentación:'
+    )
+);
+
 // ========================================================
 // ENTREGAS - ESTUDIANTE
 // El id del estudiante sale siempre del token, nunca del

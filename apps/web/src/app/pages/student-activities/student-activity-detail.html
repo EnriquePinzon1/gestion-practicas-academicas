@@ -45,6 +45,27 @@
 
       <p class="description">{{ a.descripcion }}</p>
 
+      @if (a.calificacion !== null) {
+        <section class="feedback">
+          <div class="feedback-head">
+            <h2>Retroalimentación del Docente Asesor</h2>
+            <span class="grade">{{ a.calificacion.toFixed(1) }} / 5.0</span>
+          </div>
+
+          @if (a.comentario_docente) {
+            <p class="feedback-comment">{{ a.comentario_docente }}</p>
+          }
+
+          <small>
+            Calificada el {{ a.calificado_en | date: 'dd/MM/yyyy, HH:mm' }}
+          </small>
+        </section>
+      } @else if (a.id_entrega && !a.puede_entregar) {
+        <div class="note">
+          Tu entrega está pendiente de calificación por el Docente Asesor.
+        </div>
+      }
+
       @if (a.entregado_en) {
         <div class="note ok">
           Entregada el {{ a.entregado_en | date: 'dd/MM/yyyy, HH:mm' }}

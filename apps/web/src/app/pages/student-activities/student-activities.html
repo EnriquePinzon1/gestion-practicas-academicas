@@ -67,6 +67,9 @@
               <span class="sent">
                 Entregada el
                 {{ actividad.entregado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                @if (actividad.calificacion !== null) {
+                  · Calificación: {{ actividad.calificacion.toFixed(1) }}
+                }
               </span>
             }
           </div>

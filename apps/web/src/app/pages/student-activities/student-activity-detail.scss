@@ -252,3 +252,44 @@ button:disabled {
     flex-direction: column-reverse;
   }
 }
+
+// Retroalimentación del Docente Asesor
+.feedback {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+
+  h2 {
+    margin: 0;
+    font-size: 16px;
+    color: #1e3a8a;
+  }
+
+  small {
+    color: #64748b;
+  }
+}
+
+.feedback-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.grade {
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.feedback-comment {
+  margin: 10px 0;
+  color: #1f2937;
+  white-space: pre-line;
+}

@@ -21,6 +21,11 @@ export interface ActividadEstudiante {
   entregado_en: string | null;
   entrega_actualizada_en: string | null;
   puede_entregar: boolean;
+  // Retroalimentación del Docente Asesor (null si aún
+  // no ha calificado la entrega)
+  calificacion: number | null;
+  comentario_docente: string | null;
+  calificado_en: string | null;
 }
 
 export interface PreguntaConRespuesta {

@@ -1083,13 +1083,18 @@ const STUDENT_ACTIVITY_SELECT = `
     ) AS total_preguntas,
     en.id_entrega,
     en.entregado_en,
-    en.actualizado_en AS entrega_actualizada_en
+    en.actualizado_en AS entrega_actualizada_en,
+    rt.calificacion::float AS calificacion,
+    rt.comentario AS comentario_docente,
+    rt.actualizado_en AS calificado_en
   FROM activities.actividad_estudiante ae
   INNER JOIN activities.actividad a
     ON a.id_actividad = ae.id_actividad
   LEFT JOIN activities.entrega en
     ON en.id_actividad_estudiante =
        ae.id_actividad_estudiante
+  LEFT JOIN activities.retroalimentacion rt
+    ON rt.id_entrega = en.id_entrega
   WHERE ae.id_estudiante = $1
 `;
 
@@ -1500,7 +1505,15 @@ app.get(
     try {
       const activity = await pool.query(
         `
-          SELECT id_actividad
+          SELECT
+            id_actividad,
+            (
+              estado <> 'ABIERTA'
+              OR (
+                (fecha_limite + hora_limite)
+                AT TIME ZONE 'America/Bogota'
+              ) <= NOW()
+            ) AS entregas_definitivas
           FROM activities.actividad
           WHERE id_actividad = $1
             AND id_docente = $2
@@ -1522,11 +1535,16 @@ app.get(
             ae.estado AS estado_entrega,
             en.id_entrega,
             en.entregado_en,
-            en.actualizado_en AS entrega_actualizada_en
+            en.actualizado_en AS entrega_actualizada_en,
+            rt.calificacion::float AS calificacion,
+            rt.comentario AS comentario_docente,
+            rt.actualizado_en AS calificado_en
           FROM activities.actividad_estudiante ae
           LEFT JOIN activities.entrega en
             ON en.id_actividad_estudiante =
                ae.id_actividad_estudiante
+          LEFT JOIN activities.retroalimentacion rt
+            ON rt.id_entrega = en.id_entrega
           WHERE ae.id_actividad = $1
           ORDER BY ae.id_estudiante
         `,
@@ -1617,11 +1635,20 @@ app.get(
         (d) => d.estado_entrega === 'ENTREGADA'
       ).length;
 
+      const calificadas = data.filter(
+        (d) => d.calificacion !== null
+      ).length;
+
       return res.json({
         data: {
           total: data.length,
           entregadas,
           pendientes: data.length - entregadas,
+          calificadas,
+          // El docente califica solo entregas que el
+          // estudiante ya no puede modificar.
+          puede_calificar:
+            activity.rows[0].entregas_definitivas,
           estudiantes: data,
         },
       });
@@ -1635,6 +1662,204 @@ app.get(
         message:
           'No fue posible consultar las entregas de la actividad',
       });
+    }
+  }
+);
+
+// ======================================================
+// RETROALIMENTACIÓN DEL DOCENTE
+//
+// Calificación (0.0 a 5.0, un decimal) y comentario
+// opcional sobre una entrega. Una por entrega; el docente
+// puede corregirla. Reglas:
+// - Solo el docente dueño de la actividad.
+// - La entrega debe pertenecer a la actividad.
+// - Entrega definitiva: actividad CERRADA o plazo vencido.
+// ======================================================
+
+const MAX_COMENTARIO = 2000;
+
+// ------------------------------------------------------
+// Registrar o corregir retroalimentación
+// Body: { id_docente, calificacion, comentario? }
+// ------------------------------------------------------
+
+app.put(
+  '/api/activities/:id/submissions/:idEntrega/feedback',
+  async (req, res) => {
+    const idActividad = positiveInt(req.params.id);
+    const idEntrega = positiveInt(req.params.idEntrega);
+    const idDocente = positiveInt(req.body?.id_docente);
+
+    if (!idActividad || !idEntrega || !idDocente) {
+      return res.status(400).json({
+        message: 'Actividad, entrega o docente no válido',
+      });
+    }
+
+    const rawGrade = req.body?.calificacion;
+    const calificacion =
+      typeof rawGrade === 'number'
+        ? rawGrade
+        : typeof rawGrade === 'string' && rawGrade.trim() !== ''
+          ? Number(rawGrade)
+          : NaN;
+
+    if (
+      !Number.isFinite(calificacion) ||
+      calificacion < 0 ||
+      calificacion > 5 ||
+      Math.round(calificacion * 10) !== calificacion * 10
+    ) {
+      return res.status(400).json({
+        message:
+          'La calificación debe ser un número entre 0.0 y 5.0 con máximo un decimal',
+      });
+    }
+
+    const rawComment = req.body?.comentario;
+
+    if (
+      rawComment !== undefined &&
+      rawComment !== null &&
+      typeof rawComment !== 'string'
+    ) {
+      return res.status(400).json({
+        message: 'El comentario no es válido',
+      });
+    }
+
+    const comentario =
+      typeof rawComment === 'string' && rawComment.trim()
+        ? rawComment.trim()
+        : null;
+
+    if (comentario && comentario.length > MAX_COMENTARIO) {
+      return res.status(400).json({
+        message:
+          'El comentario puede tener como máximo ' +
+          MAX_COMENTARIO +
+          ' caracteres',
+      });
+    }
+
+    const client = await pool.connect();
+    let transactionStarted = false;
+
+    try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+
+      // FOR SHARE sobre la actividad: evita que cambie de
+      // estado mientras se califica.
+      const activity = await client.query(
+        `
+          SELECT
+            (
+              estado <> 'ABIERTA'
+              OR (
+                (fecha_limite + hora_limite)
+                AT TIME ZONE 'America/Bogota'
+              ) <= NOW()
+            ) AS entregas_definitivas
+          FROM activities.actividad
+          WHERE id_actividad = $1
+            AND id_docente = $2
+          FOR SHARE
+        `,
+        [idActividad, idDocente]
+      );
+
+      if ((activity.rowCount ?? 0) === 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(404).json({
+          message: 'Actividad no encontrada',
+        });
+      }
+
+      const submission = await client.query(
+        `
+          SELECT en.id_entrega
+          FROM activities.entrega en
+          INNER JOIN activities.actividad_estudiante ae
+            ON ae.id_actividad_estudiante =
+               en.id_actividad_estudiante
+          WHERE en.id_entrega = $1
+            AND ae.id_actividad = $2
+        `,
+        [idEntrega, idActividad]
+      );
+
+      if ((submission.rowCount ?? 0) === 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(404).json({
+          message: 'La entrega no pertenece a esta actividad',
+        });
+      }
+
+      if (!activity.rows[0].entregas_definitivas) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(409).json({
+          message:
+            'Solo puede calificar cuando la actividad esté cerrada o haya vencido su fecha límite',
+        });
+      }
+
+      const result = await client.query(
+        `
+          INSERT INTO activities.retroalimentacion (
+            id_entrega,
+            id_docente,
+            calificacion,
+            comentario
+          )
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (id_entrega)
+          DO UPDATE SET
+            id_docente = EXCLUDED.id_docente,
+            calificacion = EXCLUDED.calificacion,
+            comentario = EXCLUDED.comentario,
+            actualizado_en = NOW()
+          RETURNING
+            id_retroalimentacion,
+            id_entrega,
+            calificacion::float AS calificacion,
+            comentario AS comentario_docente,
+            actualizado_en AS calificado_en,
+            (xmax = 0) AS creada
+        `,
+        [idEntrega, idDocente, calificacion, comentario]
+      );
+
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      const { creada, ...feedback } = result.rows[0];
+
+      return res.status(creada ? 201 : 200).json({
+        data: feedback,
+        message: creada
+          ? 'Retroalimentación registrada correctamente'
+          : 'Retroalimentación actualizada correctamente',
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        await client.query('ROLLBACK');
+      }
+
+      console.error('Error registrando retroalimentación:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible registrar la retroalimentación',
+      });
+    } finally {
+      client.release();
     }
   }
 );
