@@ -1,0 +1,128 @@
+<div class="page">
+  @if (loading() && !asignacion()) {
+    <p class="loading">Cargando asignación...</p>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert success">
+      {{ successMessage() }}
+    </div>
+  }
+
+  @if (asignacion(); as a) {
+    <div class="card">
+      <div class="header">
+        <div>
+          <span class="eyebrow">
+            Asignación #{{ a.id_asignacion }} · Periodo {{ a.periodo_academico }}
+          </span>
+
+          <h1>{{ nombreEstudiante() }}</h1>
+
+          <span
+            class="status"
+            [ngClass]="'status-' + a.estado.toLowerCase()"
+          >
+            {{ etiquetas[a.estado] }}
+          </span>
+        </div>
+
+        <div class="actions">
+          <button
+            class="secondary"
+            (click)="back()"
+          >
+            Volver
+          </button>
+
+          @for (accion of acciones(); track accion.estado) {
+            <button
+              [class.primary]="!accion.peligrosa"
+              [class.danger]="accion.peligrosa"
+              [disabled]="updating()"
+              (click)="changeStatus(accion)"
+            >
+              {{ accion.etiqueta }}
+            </button>
+          }
+        </div>
+      </div>
+
+      @if (acciones().length === 0) {
+        <div class="final-note">
+          Esta asignación está
+          <strong>{{ etiquetas[a.estado] | lowercase }}</strong>
+          y ya no admite cambios de estado.
+        </div>
+      }
+
+      <div class="grid">
+        <div>
+          <strong>Estudiante</strong>
+          <p>{{ nombreEstudiante() }}</p>
+
+          @if (estudiante(); as e) {
+            <small>
+              Código {{ e.codigo_estudiante }} · {{ e.correo }}
+            </small>
+          } @else {
+            <small>
+              El estudiante no figura como activo actualmente.
+            </small>
+          }
+        </div>
+
+        <div>
+          <strong>Práctica académica</strong>
+          <p>{{ a.practica }}</p>
+        </div>
+
+        <div>
+          <strong>Institución receptora</strong>
+          <p>{{ a.institucion }}</p>
+        </div>
+
+        <div>
+          <strong>Tutor receptor</strong>
+          <p [class.muted]="a.id_tutor === null">
+            {{ nombreTutor() }}
+          </p>
+        </div>
+
+        <div>
+          <strong>Fecha de inicio</strong>
+          <p>{{ formatearFecha(a.fecha_inicio) }}</p>
+
+          @if (!a.fecha_inicio && a.estado === 'ASIGNADA') {
+            <small>Se registra al iniciar la práctica.</small>
+          }
+        </div>
+
+        <div>
+          <strong>Fecha de finalización</strong>
+          <p>{{ formatearFecha(a.fecha_fin) }}</p>
+
+          @if (!a.fecha_fin && a.estado === 'EN_CURSO') {
+            <small>Se registra al finalizar la práctica.</small>
+          }
+        </div>
+      </div>
+
+      <div class="audit">
+        Registrada el {{ a.creado_en | date: 'dd/MM/yyyy, HH:mm' }}
+        · Última actualización {{ a.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}
+      </div>
+    </div>
+
+    <app-tutor-record-view
+      class="tutor-record"
+      [endpoint]="'/practice-assignments/' + a.id_asignacion + '/tutor-record'"
+    />
+  }
+</div>

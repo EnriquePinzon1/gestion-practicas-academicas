@@ -1,4 +1,4 @@
-﻿import { CommonModule } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import {
   Component,
   computed,
@@ -43,6 +43,7 @@ interface GrupoDetalle {
   nombre: string;
   id_practica: number;
   practica: string;
+  periodo_academico: string;
   semestre: number | null;
   id_docente: number;
   estado: string;
@@ -52,7 +53,10 @@ interface GrupoDetalle {
 @Component({
   selector: 'app-group-form',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+  ],
   templateUrl: './group-form.html',
   styleUrl: './group-form.scss',
 })
@@ -69,8 +73,11 @@ export class GroupForm implements OnInit {
   estudiantes = signal<Estudiante[]>([]);
   programas = signal<Programa[]>([]);
 
-  selectedStudents = signal<Estudiante[]>([]);
-  initialStudentIds = new Set<number>();
+  selectedStudents =
+    signal<Estudiante[]>([]);
+
+  initialStudentIds =
+    new Set<number>();
 
   studentSearch = signal('');
   programFilter = signal('');
@@ -78,6 +85,7 @@ export class GroupForm implements OnInit {
 
   nombre = '';
   idPractica: number | null = null;
+  periodoAcademico = '';
   semestre: number | null = null;
   idDocente: number | null = null;
 
@@ -88,7 +96,8 @@ export class GroupForm implements OnInit {
   ) {}
 
   ngOnInit() {
-    const id = this.route.snapshot.paramMap.get('id');
+    const id =
+      this.route.snapshot.paramMap.get('id');
 
     this.loadCatalogs().then(() => {
       if (id) {
@@ -101,16 +110,22 @@ export class GroupForm implements OnInit {
 
   activePractices = computed(() =>
     this.practicas().filter(
-      (practica) => practica.estado === 'ACTIVA'
+      (practica) =>
+        practica.estado === 'ACTIVA'
     )
   );
 
   availableStudents = computed(() => {
     const search =
-      this.studentSearch().trim().toLowerCase();
+      this.studentSearch()
+        .trim()
+        .toLowerCase();
 
-    const program = this.programFilter();
-    const semester = this.semesterFilter();
+    const program =
+      this.programFilter();
+
+    const semester =
+      this.semesterFilter();
 
     const selectedIds = new Set(
       this.selectedStudents().map(
@@ -118,31 +133,45 @@ export class GroupForm implements OnInit {
       )
     );
 
-    return this.estudiantes().filter((student) => {
-      if (selectedIds.has(student.id_estudiante)) {
-        return false;
+    return this.estudiantes().filter(
+      (student) => {
+        if (
+          selectedIds.has(
+            student.id_estudiante
+          )
+        ) {
+          return false;
+        }
+
+        const matchesSearch =
+          !search ||
+          student.nombres
+            .toLowerCase()
+            .includes(search) ||
+          student.apellidos
+            .toLowerCase()
+            .includes(search) ||
+          student.codigo_estudiante
+            .toLowerCase()
+            .includes(search);
+
+        const matchesProgram =
+          !program ||
+          student.id_programa ===
+            Number(program);
+
+        const matchesSemester =
+          !semester ||
+          student.semestre ===
+            Number(semester);
+
+        return (
+          matchesSearch &&
+          matchesProgram &&
+          matchesSemester
+        );
       }
-
-      const matchesSearch =
-        !search ||
-        student.nombres.toLowerCase().includes(search) ||
-        student.apellidos.toLowerCase().includes(search) ||
-        student.codigo_estudiante.toLowerCase().includes(search);
-
-      const matchesProgram =
-        !program ||
-        student.id_programa === Number(program);
-
-      const matchesSemester =
-        !semester ||
-        student.semestre === Number(semester);
-
-      return (
-        matchesSearch &&
-        matchesProgram &&
-        matchesSemester
-      );
-    });
+    );
   });
 
   async loadCatalogs() {
@@ -155,16 +184,38 @@ export class GroupForm implements OnInit {
         studentsResponse,
         programsResponse,
       ] = await Promise.all([
-        this.api.get<{ data: Practica[] }>('/practices'),
-        this.api.get<{ data: Docente[] }>('/group-options/teachers'),
-        this.api.get<{ data: Estudiante[] }>('/group-options/students'),
-        this.api.get<{ data: Programa[] }>('/programs'),
+        this.api.get<{
+          data: Practica[];
+        }>('/practices'),
+
+        this.api.get<{
+          data: Docente[];
+        }>('/group-options/teachers'),
+
+        this.api.get<{
+          data: Estudiante[];
+        }>('/group-options/students'),
+
+        this.api.get<{
+          data: Programa[];
+        }>('/programs'),
       ]);
 
-      this.practicas.set(practicesResponse.data);
-      this.docentes.set(teachersResponse.data);
-      this.estudiantes.set(studentsResponse.data);
-      this.programas.set(programsResponse.data);
+      this.practicas.set(
+        practicesResponse.data
+      );
+
+      this.docentes.set(
+        teachersResponse.data
+      );
+
+      this.estudiantes.set(
+        studentsResponse.data
+      );
+
+      this.programas.set(
+        programsResponse.data
+      );
     } catch (error) {
       this.errorMessage.set(
         error instanceof Error
@@ -184,26 +235,45 @@ export class GroupForm implements OnInit {
     this.loading.set(true);
 
     try {
-      const response = await this.api.get<{
-        data: GrupoDetalle;
-      }>('/groups/' + this.idGrupo);
+      const response =
+        await this.api.get<{
+          data: GrupoDetalle;
+        }>(
+          '/groups/' +
+            this.idGrupo
+        );
 
-      const grupo = response.data;
+      const grupo =
+        response.data;
 
-      this.nombre = grupo.nombre;
-      this.idPractica = grupo.id_practica;
-      this.semestre = grupo.semestre;
-      this.idDocente = grupo.id_docente;
+      this.nombre =
+        grupo.nombre;
+
+      this.idPractica =
+        grupo.id_practica;
+
+      this.periodoAcademico =
+        grupo.periodo_academico;
+
+      this.semestre =
+        grupo.semestre;
+
+      this.idDocente =
+        grupo.id_docente;
 
       this.selectedStudents.set(
         grupo.integrantes ?? []
       );
 
-      this.initialStudentIds = new Set(
-        (grupo.integrantes ?? []).map(
-          (item) => item.id_estudiante
-        )
-      );
+      this.initialStudentIds =
+        new Set(
+          (
+            grupo.integrantes ?? []
+          ).map(
+            (item) =>
+              item.id_estudiante
+          )
+        );
     } catch (error) {
       this.errorMessage.set(
         error instanceof Error
@@ -215,21 +285,32 @@ export class GroupForm implements OnInit {
     }
   }
 
-  programName(idPrograma: number) {
+  programName(
+    idPrograma: number
+  ) {
     return (
       this.programas().find(
-        (item) => item.id_programa === idPrograma
+        (item) =>
+          item.id_programa ===
+          idPrograma
       )?.nombre ?? 'Sin programa'
     );
   }
 
-  addStudent(student: Estudiante) {
+  addStudent(
+    student: Estudiante
+  ) {
     this.selectedStudents.update(
-      (items) => [...items, student]
+      (items) => [
+        ...items,
+        student,
+      ]
     );
   }
 
-  removeStudent(student: Estudiante) {
+  removeStudent(
+    student: Estudiante
+  ) {
     this.selectedStudents.update(
       (items) =>
         items.filter(
@@ -253,10 +334,22 @@ export class GroupForm implements OnInit {
     if (
       !this.nombre.trim() ||
       !this.idPractica ||
+      !this.periodoAcademico.trim() ||
       !this.idDocente
     ) {
       this.errorMessage.set(
-        'Nombre, práctica y Docente Asesor son obligatorios.'
+        'Nombre, práctica, periodo académico y Docente Asesor son obligatorios.'
+      );
+      return;
+    }
+
+    if (
+      !/^\d{4}-[12]$/.test(
+        this.periodoAcademico.trim()
+      )
+    ) {
+      this.errorMessage.set(
+        'El periodo académico debe tener el formato AAAA-1 o AAAA-2.'
       );
       return;
     }
@@ -276,7 +369,8 @@ export class GroupForm implements OnInit {
 
     if (
       !this.editMode() &&
-      this.selectedStudents().length === 0
+      this.selectedStudents().length ===
+        0
     ) {
       this.errorMessage.set(
         'Seleccione al menos un estudiante.'
@@ -287,48 +381,80 @@ export class GroupForm implements OnInit {
     this.loading.set(true);
 
     try {
-      const groupBody = {
-        nombre: this.nombre.trim(),
-        id_practica: this.idPractica,
-        semestre: this.semestre,
-        id_docente: this.idDocente,
-      };
+      if (
+        this.editMode() &&
+        this.idGrupo
+      ) {
+        const updateBody = {
+          nombre:
+            this.nombre.trim(),
 
-      if (this.editMode() && this.idGrupo) {
+          semestre:
+            this.semestre,
+
+          id_docente:
+            this.idDocente,
+        };
+
         await this.api.patch(
-          '/groups/' + this.idGrupo,
-          groupBody
+          '/groups/' +
+            this.idGrupo,
+          updateBody
         );
 
-        const currentIds = new Set(
-          this.selectedStudents().map(
-            (item) => item.id_estudiante
-          )
-        );
+        const currentIds =
+          new Set(
+            this.selectedStudents().map(
+              (item) =>
+                item.id_estudiante
+            )
+          );
 
-        const toAdd = [...currentIds].filter(
-          (id) => !this.initialStudentIds.has(id)
-        );
+        const toAdd =
+          [...currentIds].filter(
+            (id) =>
+              !this.initialStudentIds.has(
+                id
+              )
+          );
 
-        const toRemove = [...this.initialStudentIds].filter(
-          (id) => !currentIds.has(id)
-        );
+        const toRemove =
+          [
+            ...this.initialStudentIds,
+          ].filter(
+            (id) =>
+              !currentIds.has(id)
+          );
 
-        for (const idEstudiante of toAdd) {
+        for (
+          const idEstudiante
+          of toAdd
+        ) {
           await this.api.patch(
-            '/groups/' + this.idGrupo + '/students',
+            '/groups/' +
+              this.idGrupo +
+              '/students',
             {
-              id_estudiante: idEstudiante,
+              id_estudiante:
+                idEstudiante,
+
               action: 'ADD',
             }
           );
         }
 
-        for (const idEstudiante of toRemove) {
+        for (
+          const idEstudiante
+          of toRemove
+        ) {
           await this.api.patch(
-            '/groups/' + this.idGrupo + '/students',
+            '/groups/' +
+              this.idGrupo +
+              '/students',
             {
-              id_estudiante: idEstudiante,
+              id_estudiante:
+                idEstudiante,
+
               action: 'REMOVE',
             }
           );
@@ -338,12 +464,33 @@ export class GroupForm implements OnInit {
           'Grupo actualizado correctamente.'
         );
       } else {
-        await this.api.post('/groups', {
-          ...groupBody,
-          estudiantes: this.selectedStudents().map(
-            (item) => item.id_estudiante
-          ),
-        });
+        const createBody = {
+          nombre:
+            this.nombre.trim(),
+
+          id_practica:
+            this.idPractica,
+
+          periodo_academico:
+            this.periodoAcademico.trim(),
+
+          semestre:
+            this.semestre,
+
+          id_docente:
+            this.idDocente,
+
+          estudiantes:
+            this.selectedStudents().map(
+              (item) =>
+                item.id_estudiante
+            ),
+        };
+
+        await this.api.post(
+          '/groups',
+          createBody
+        );
 
         this.successMessage.set(
           'Grupo registrado correctamente.'
@@ -351,7 +498,9 @@ export class GroupForm implements OnInit {
       }
 
       setTimeout(() => {
-        this.router.navigate(['/grupos']);
+        this.router.navigate([
+          '/grupos',
+        ]);
       }, 800);
     } catch (error) {
       this.errorMessage.set(
@@ -365,6 +514,8 @@ export class GroupForm implements OnInit {
   }
 
   cancel() {
-    this.router.navigate(['/grupos']);
+    this.router.navigate([
+      '/grupos',
+    ]);
   }
 }

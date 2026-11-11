@@ -1,0 +1,26 @@
+.back-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-bottom: 18px;
+  color: #1d5d91;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.group-line {
+  margin-top: 6px !important;
+  color: #475569 !important;
+  font-weight: 600;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}

@@ -1,0 +1,152 @@
+<section class="follow-up-page">
+
+  <button type="button" class="back-link" (click)="back()">
+    ← Volver a mis practicantes
+  </button>
+
+  @if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="panel loading">Cargando practicante...</div>
+  } @else if (detail(); as d) {
+
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">Practicante</span>
+        <h1>{{ studentName(d.estudiante) }}</h1>
+        <p>
+          {{ d.estudiante.codigo_estudiante ?? 'Sin código' }}
+          @if (d.estudiante.correo) {
+            · {{ d.estudiante.correo }}
+          }
+        </p>
+      </div>
+      <span class="status" [class]="'status status-' + d.estado.toLowerCase()">
+        {{ statusLabel(d.estado) }}
+      </span>
+    </header>
+
+    <section class="panel section-gap">
+      <div class="panel-heading">
+        <h2>Práctica</h2>
+        <p>Dónde y cuándo realiza la práctica.</p>
+      </div>
+
+      <dl class="info-grid">
+        <div>
+          <dt>Práctica</dt>
+          <dd>{{ d.practica }}</dd>
+        </div>
+        <div>
+          <dt>Institución</dt>
+          <dd>{{ d.institucion }}</dd>
+        </div>
+        <div>
+          <dt>Período académico</dt>
+          <dd>{{ d.periodo_academico }}</dd>
+        </div>
+        <div>
+          <dt>Fecha de inicio</dt>
+          <dd>
+            @if (d.fecha_inicio) {
+              {{ d.fecha_inicio | date: 'dd/MM/yyyy' : 'UTC' }}
+            } @else {
+              <span class="muted">Sin iniciar</span>
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Fecha de finalización</dt>
+          <dd>
+            @if (d.fecha_fin) {
+              {{ d.fecha_fin | date: 'dd/MM/yyyy' : 'UTC' }}
+            } @else {
+              <span class="muted">—</span>
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Docente asesor</dt>
+          <dd>
+            @if (d.docente) {
+              {{ d.docente.nombres }} {{ d.docente.apellidos }}
+              <small>{{ d.docente.correo }}</small>
+            } @else {
+              <span class="muted">Sin docente asignado</span>
+            }
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    <app-tutor-observations [idAsignacion]="d.id_asignacion" />
+
+    <app-tutor-evaluation [idAsignacion]="d.id_asignacion" />
+
+    @if (d.seguimiento; as s) {
+
+      <section class="summary-grid">
+        <article class="summary-card">
+          <span>Entregadas</span>
+          <strong>{{ s.resumen.entregadas }} / {{ s.resumen.total }}</strong>
+        </article>
+        <article class="summary-card">
+          <span>Pendientes (en plazo)</span>
+          <strong>{{ s.resumen.pendientes }}</strong>
+        </article>
+        <article class="summary-card">
+          <span>No entregadas</span>
+          <strong [class.warn]="s.resumen.no_entregadas > 0">
+            {{ s.resumen.no_entregadas }}
+          </strong>
+        </article>
+        <article class="summary-card">
+          <span>Promedio ({{ s.resumen.calificadas }} calificadas)</span>
+          <strong>{{ formatGrade(s.resumen.promedio) }}</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Seguimiento académico</h2>
+          <p>
+            {{ d.grupo }} · actividades asignadas por el
+            docente asesor, ordenadas por fecha límite.
+          </p>
+        </div>
+
+        @if (s.actividades.length === 0) {
+          <div class="empty-state">
+            <h3>Sin actividades</h3>
+            <p>El docente asesor aún no ha asignado actividades.</p>
+          </div>
+        } @else {
+          <app-follow-up-timeline [activities]="s.actividades" />
+        }
+      </section>
+
+    } @else {
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Seguimiento académico</h2>
+        </div>
+        <div class="notice">
+          @if (d.seguimiento_error) {
+            <strong>No disponible</strong>
+            {{ d.seguimiento_error }}. Intenta de nuevo más tarde.
+          } @else {
+            <strong>Sin grupo de seguimiento</strong>
+            El estudiante aún no pertenece a un grupo de esta
+            práctica para el período {{ d.periodo_academico }},
+            por lo que no tiene actividades asignadas.
+          }
+        </div>
+      </section>
+
+    }
+  }
+
+</section>

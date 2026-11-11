@@ -25,6 +25,8 @@ interface UsuarioDetalle {
 codigo_estudiante: string | null;
 semestre: number | null;
 id_programa: number | null;
+
+cargo: string | null;
 }
 
 interface Programa {
@@ -62,6 +64,8 @@ export class UserForm implements OnInit {
   codigoEstudiante = '';
   semestre: number | null = null;
   idPrograma: number | null = null;
+
+  cargo = '';
 
   constructor(
     private readonly api: ApiService,
@@ -130,6 +134,10 @@ if (usuario.rol === 'ESTUDIANTE') {
 
   this.idPrograma =
     usuario.id_programa ?? null;
+}
+
+if (usuario.rol === 'TUTOR_RECEPTOR') {
+  this.cargo = usuario.cargo ?? '';
 }
     } catch (error) {
       this.errorMessage.set(
@@ -214,6 +222,12 @@ if (usuario.rol === 'ESTUDIANTE') {
             id_programa: this.idPrograma,
           }
         : {}),
+
+      ...(this.rol === 'TUTOR_RECEPTOR'
+        ? {
+            cargo: this.cargo.trim() || null,
+          }
+        : {}),
     }
   );
 
@@ -236,6 +250,12 @@ if (usuario.rol === 'ESTUDIANTE') {
                   this.codigoEstudiante,
                 semestre: this.semestre,
                 id_programa: this.idPrograma,
+              }
+            : {}),
+
+          ...(this.rol === 'TUTOR_RECEPTOR'
+            ? {
+                cargo: this.cargo.trim() || null,
               }
             : {}),
         });

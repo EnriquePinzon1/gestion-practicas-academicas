@@ -1,0 +1,120 @@
+import { EstadoAsignacion } from
+  '../assignments/assignment.model';
+
+import {
+  FollowUpActivity,
+  FollowUpSummary,
+} from '../follow-up/follow-up.model';
+
+// Asignación vista por el Tutor Receptor: dónde y con quién
+// realiza la práctica el estudiante, más el grupo académico
+// (misma práctica y período) que permite su seguimiento.
+export interface TutorAssignment {
+  id_asignacion: number;
+  id_estudiante: number;
+  id_practica: number;
+  practica: string;
+  id_institucion: number;
+  institucion: string;
+  periodo_academico: string;
+  estado: EstadoAsignacion;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  creado_en: string;
+  id_grupo: number | null;
+  grupo: string | null;
+  estado_grupo: string | null;
+  estudiante: {
+    id_estudiante: number;
+    nombres: string | null;
+    apellidos: string | null;
+    correo: string | null;
+    codigo_estudiante: string | null;
+    semestre: number | null;
+  };
+  docente: {
+    id_docente: number;
+    nombres: string;
+    apellidos: string;
+    correo: string;
+  } | null;
+}
+
+export interface TutorAssignmentDetail extends TutorAssignment {
+  seguimiento: {
+    resumen: FollowUpSummary;
+    actividades: FollowUpActivity[];
+  } | null;
+  seguimiento_error?: string;
+}
+
+export function isCurrentAssignment(
+  assignment: Pick<TutorAssignment, 'estado'>
+): boolean {
+  return (
+    assignment.estado === 'ASIGNADA' ||
+    assignment.estado === 'EN_CURSO'
+  );
+}
+
+// Bitácora del Tutor Receptor: observación fechada sobre el
+// desempeño del practicante en la institución.
+export interface TutorObservation {
+  id_observacion: number;
+  id_asignacion: number;
+  id_tutor: number;
+  fecha: string;
+  descripcion: string;
+  creado_en: string;
+  actualizado_en: string;
+  propia: boolean;
+}
+
+export interface TutorObservationsResponse {
+  data: TutorObservation[];
+  puede_registrar: boolean;
+  fecha_minima: string | null;
+  fecha_maxima: string;
+}
+
+export const MAX_OBSERVACION = 2000;
+
+// Evaluación final del Tutor Receptor (una por asignación).
+export interface TutorEvaluation {
+  id_evaluacion: number;
+  id_asignacion: number;
+  id_tutor: number;
+  calificacion: number;
+  concepto: string;
+  recomienda_aprobacion: boolean;
+  creado_en: string;
+  actualizado_en: string;
+}
+
+export interface TutorEvaluationResponse {
+  data: TutorEvaluation | null;
+  puede_evaluar: boolean;
+}
+
+// Bitácora + evaluación en solo lectura (Coordinador y
+// Docente Asesor). Para el docente incluye la asignación
+// enlazada al grupo; data null si el estudiante no tiene
+// asignación para esa práctica y período.
+export interface TutorRecord {
+  asignacion?: {
+    id_asignacion: number;
+    id_tutor: number | null;
+    estado: string;
+    fecha_inicio: string | null;
+    fecha_fin: string | null;
+    institucion: string;
+  };
+  tutor: {
+    id_tutor: number;
+    nombres: string | null;
+    apellidos: string | null;
+    cargo: string | null;
+  } | null;
+  observaciones: Omit<TutorObservation, 'propia'>[];
+  evaluacion: TutorEvaluation | null;
+}

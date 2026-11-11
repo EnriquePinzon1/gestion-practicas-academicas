@@ -1,0 +1,106 @@
+// Evaluación final del Tutor Receptor. Complementa
+// tutor-observations.scss (formulario y alertas).
+
+.evaluation-form {
+  border-bottom: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+
+  input[type='text'] {
+    max-width: 140px;
+  }
+}
+
+.recommend {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+
+  legend {
+    width: 100%;
+    padding: 0;
+    margin-bottom: 8px;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .choice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1e293b;
+    cursor: pointer;
+
+    input {
+      width: auto;
+      margin: 0;
+    }
+  }
+}
+
+.evaluation-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 28px;
+  margin-bottom: 12px;
+}
+
+.grade {
+  span {
+    display: block;
+    color: #64748b;
+    font-size: 13px;
+  }
+
+  strong {
+    font-size: 28px;
+    color: #10233f;
+  }
+}
+
+.verdict {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+  font-size: 13px;
+
+  &.negative {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+}
+
+.concept {
+  margin: 0 0 10px;
+  color: #1e293b;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+// Vista de solo lectura (TutorRecordView).
+.record-meta {
+  margin: 0 0 16px;
+  color: #475569;
+  line-height: 1.5;
+
+  strong {
+    color: #10233f;
+  }
+}
+
+.subheading {
+  margin: 20px 0 10px;
+  color: #10233f;
+  font-size: 16px;
+
+  &:first-of-type {
+    margin-top: 0;
+  }
+}

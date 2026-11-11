@@ -49,6 +49,10 @@
   <option value="ESTUDIANTE">
     Estudiante
   </option>
+
+  <option value="TUTOR_RECEPTOR">
+    Tutor Receptor
+  </option>
 </select>
       </div>
 
@@ -202,6 +206,37 @@
       </div>
 
     </div>
+
+  </div>
+}
+
+@if (rol === 'TUTOR_RECEPTOR') {
+  <div class="academic-section">
+
+    <h2>Información del tutor receptor</h2>
+
+    <div class="grid">
+
+      <div class="field">
+        <label for="cargo">
+          Cargo en la institución
+        </label>
+
+        <input
+          id="cargo"
+          name="cargo"
+          maxlength="120"
+          placeholder="Ej.: Coordinador académico"
+          [(ngModel)]="cargo"
+        />
+      </div>
+
+    </div>
+
+    <p class="section-hint">
+      La vinculación del tutor con una institución receptora
+      se gestiona desde el módulo de instituciones.
+    </p>
 
   </div>
 }

@@ -1,0 +1,190 @@
+<div class="page">
+  <div class="card">
+    <h1>Registrar Asignación de Práctica</h1>
+
+    <p class="subtitle">
+      Indica dónde y con quién realizará el estudiante su práctica académica.
+    </p>
+
+    @if (errorMessage()) {
+      <div class="alert error">
+        {{ errorMessage() }}
+      </div>
+    }
+
+    @if (successMessage()) {
+      <div class="alert success">
+        {{ successMessage() }}
+      </div>
+    }
+
+    @if (loading()) {
+      <p>Cargando información...</p>
+    } @else {
+      <form (ngSubmit)="save()">
+        <label class="full">
+          Práctica académica *
+          <select
+            [ngModel]="idPractica()"
+            (ngModelChange)="onPracticeChange($event)"
+            name="idPractica"
+          >
+            <option [ngValue]="null">
+              Seleccione una práctica activa
+            </option>
+
+            @for (
+              practica of practicasActivas();
+              track practica.id_practica
+            ) {
+              <option [ngValue]="practica.id_practica">
+                {{ practica.nombre }} — {{ practica.programa }}
+              </option>
+            }
+          </select>
+
+          @if (practicasActivas().length === 0) {
+            <small class="hint warning">
+              No hay prácticas activas. Active o registre una práctica antes de asignar estudiantes.
+            </small>
+          }
+        </label>
+
+        <label class="full">
+          Estudiante *
+          <select
+            [ngModel]="idEstudiante()"
+            (ngModelChange)="idEstudiante.set($event)"
+            name="idEstudiante"
+            [disabled]="!practicaSeleccionada()"
+          >
+            <option [ngValue]="null">
+              {{
+                practicaSeleccionada()
+                  ? 'Seleccione un estudiante'
+                  : 'Primero seleccione la práctica'
+              }}
+            </option>
+
+            @for (
+              estudiante of estudiantesDelPrograma();
+              track estudiante.id_estudiante
+            ) {
+              <option [ngValue]="estudiante.id_estudiante">
+                {{ estudiante.nombres }} {{ estudiante.apellidos }}
+                · Código {{ estudiante.codigo_estudiante }}
+                · Semestre {{ estudiante.semestre }}
+              </option>
+            }
+          </select>
+
+          @if (practicaSeleccionada(); as practica) {
+            @if (estudiantesDelPrograma().length === 0) {
+              <small class="hint warning">
+                No hay estudiantes activos del programa {{ practica.programa }}.
+              </small>
+            } @else {
+              <small class="hint">
+                Solo se muestran estudiantes activos del programa {{ practica.programa }}.
+              </small>
+            }
+          }
+        </label>
+
+        <label>
+          Institución receptora *
+          <select
+            [ngModel]="idInstitucion()"
+            (ngModelChange)="onInstitutionChange($event)"
+            name="idInstitucion"
+          >
+            <option [ngValue]="null">
+              Seleccione una institución
+            </option>
+
+            @for (
+              institucion of instituciones();
+              track institucion.id_institucion
+            ) {
+              <option [ngValue]="institucion.id_institucion">
+                {{ institucion.nombre }}
+              </option>
+            }
+          </select>
+        </label>
+
+        <label>
+          Tutor receptor (opcional)
+          <select
+            [(ngModel)]="idTutor"
+            name="idTutor"
+            [disabled]="!idInstitucion() || loadingTutors()"
+          >
+            <option [ngValue]="null">
+              {{
+                idInstitucion()
+                  ? 'Sin tutor por ahora'
+                  : 'Primero seleccione la institución'
+              }}
+            </option>
+
+            @for (
+              tutor of tutores();
+              track tutor.id_tutor
+            ) {
+              <option [ngValue]="tutor.id_tutor">
+                {{ tutor.nombres }} {{ tutor.apellidos }}
+                @if (tutor.cargo) {
+                  · {{ tutor.cargo }}
+                }
+              </option>
+            }
+          </select>
+
+          @if (idInstitucion() && !loadingTutors()) {
+            <small class="hint">
+              @if (tutores().length === 0) {
+                Esta institución no tiene tutores receptores vinculados. Puede asignarse más adelante.
+              } @else {
+                Solo se muestran tutores con vinculación activa a esta institución.
+              }
+            </small>
+          }
+        </label>
+
+        <label>
+          Periodo académico *
+          <input
+            type="text"
+            placeholder="AAAA-1 o AAAA-2"
+            maxlength="6"
+            [(ngModel)]="periodoAcademico"
+            name="periodoAcademico"
+          />
+        </label>
+
+        <div class="actions">
+          <button
+            type="button"
+            class="secondary"
+            (click)="cancel()"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="submit"
+            class="primary"
+            [disabled]="saving()"
+          >
+            {{
+              saving()
+                ? 'Guardando...'
+                : 'Registrar asignación'
+            }}
+          </button>
+        </div>
+      </form>
+    }
+  </div>
+</div>

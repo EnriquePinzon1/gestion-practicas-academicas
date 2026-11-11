@@ -142,6 +142,13 @@ app.post('/api/institutions', async (req, res) => {
     });
   }
 
+  if (nombre.length > 180) {
+    return res.status(400).json({
+      message:
+        'El nombre de la institución no puede superar 180 caracteres',
+    });
+  }
+
   try {
     const existing = await pool.query(
       `
@@ -181,13 +188,379 @@ app.post('/api/institutions', async (req, res) => {
 });
 
 // ======================================================
+// INSTITUCIÓN RECEPTORA - DETALLE Y TUTORES VINCULADOS
+// practices.institucion_tutor indica en qué institución
+// puede actuar cada Tutor Receptor. Los vínculos no se
+// eliminan: se desactivan para conservar el historial.
+// ======================================================
+
+function parsePositiveId(value: unknown): number | null {
+  const id = Number(value);
+
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function findInstitution(idInstitucion: number) {
+  const result = await pool.query(
+    `
+      SELECT id_institucion, nombre
+      FROM practices.institucion
+      WHERE id_institucion = $1
+    `,
+    [idInstitucion]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+// Tutores receptores activos según User Service.
+// Lanza error si el servicio no responde.
+async function fetchAvailableTutors(): Promise<
+  Map<number, any>
+> {
+  const response = await fetch(
+    'http://localhost:3334/api/internal/tutors/available'
+  );
+
+  if (!response.ok) {
+    throw new Error('USER_SERVICE_UNAVAILABLE');
+  }
+
+  const body: any = await response.json();
+
+  return new Map(
+    (body.data ?? []).map((tutor: any) => [
+      Number(tutor.id_tutor),
+      tutor,
+    ])
+  );
+}
+
+// Detalle de institución
+app.get('/api/institutions/:id', async (req, res) => {
+  const idInstitucion = parsePositiveId(req.params.id);
+
+  if (!idInstitucion) {
+    return res.status(400).json({
+      message: 'El identificador de la institución no es válido',
+    });
+  }
+
+  try {
+    const institucion = await findInstitution(idInstitucion);
+
+    if (!institucion) {
+      return res.status(404).json({
+        message: 'Institución receptora no encontrada',
+      });
+    }
+
+    return res.json({ data: institucion });
+  } catch (error) {
+    console.error('Error consultando institución:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar la institución',
+    });
+  }
+});
+
+// Tutores vinculados a una institución
+// Devuelve nombre y cargo del tutor (User Service).
+// tutor_activo = false si el usuario ya no está activo.
+app.get('/api/institutions/:id/tutors', async (req, res) => {
+  const idInstitucion = parsePositiveId(req.params.id);
+
+  if (!idInstitucion) {
+    return res.status(400).json({
+      message: 'El identificador de la institución no es válido',
+    });
+  }
+
+  try {
+    const institucion = await findInstitution(idInstitucion);
+
+    if (!institucion) {
+      return res.status(404).json({
+        message: 'Institución receptora no encontrada',
+      });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT
+          id_institucion_tutor,
+          id_institucion,
+          id_tutor,
+          activo,
+          creado_en
+        FROM practices.institucion_tutor
+        WHERE id_institucion = $1
+        ORDER BY activo DESC, creado_en DESC
+      `,
+      [idInstitucion]
+    );
+
+    let tutores: Map<number, any>;
+
+    try {
+      tutores = await fetchAvailableTutors();
+    } catch {
+      return res.status(503).json({
+        message: 'User Service no disponible',
+      });
+    }
+
+    const data = result.rows.map((row) => {
+      const tutor = tutores.get(Number(row.id_tutor));
+
+      return {
+        ...row,
+        nombres: tutor?.nombres ?? null,
+        apellidos: tutor?.apellidos ?? null,
+        correo: tutor?.correo ?? null,
+        cargo: tutor?.cargo ?? null,
+        tutor_activo: Boolean(tutor),
+      };
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    console.error('Error consultando tutores de la institución:', error);
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar los tutores de la institución',
+    });
+  }
+});
+
+// Vincular tutor a institución
+// Si el vínculo existía inactivo, se reactiva.
+app.post('/api/institutions/:id/tutors', async (req, res) => {
+  const idInstitucion = parsePositiveId(req.params.id);
+  const idTutor = parsePositiveId(req.body?.id_tutor);
+
+  if (!idInstitucion) {
+    return res.status(400).json({
+      message: 'El identificador de la institución no es válido',
+    });
+  }
+
+  if (!idTutor) {
+    return res.status(400).json({
+      message: 'Debe seleccionar un Tutor Receptor',
+    });
+  }
+
+  try {
+    const institucion = await findInstitution(idInstitucion);
+
+    if (!institucion) {
+      return res.status(404).json({
+        message: 'Institución receptora no encontrada',
+      });
+    }
+
+    let tutores: Map<number, any>;
+
+    try {
+      tutores = await fetchAvailableTutors();
+    } catch {
+      return res.status(503).json({
+        message: 'User Service no disponible',
+      });
+    }
+
+    if (!tutores.has(idTutor)) {
+      return res.status(400).json({
+        message:
+          'El Tutor Receptor seleccionado no está disponible',
+      });
+    }
+
+    const existing = await pool.query(
+      `
+        SELECT id_institucion_tutor, activo
+        FROM practices.institucion_tutor
+        WHERE id_institucion = $1
+          AND id_tutor = $2
+      `,
+      [idInstitucion, idTutor]
+    );
+
+    if (existing.rows[0]?.activo === true) {
+      return res.status(409).json({
+        message:
+          'El Tutor Receptor ya está vinculado a esta institución',
+      });
+    }
+
+    if (existing.rows[0]) {
+      const reactivated = await pool.query(
+        `
+          UPDATE practices.institucion_tutor
+          SET activo = TRUE
+          WHERE id_institucion_tutor = $1
+          RETURNING
+            id_institucion_tutor,
+            id_institucion,
+            id_tutor,
+            activo,
+            creado_en
+        `,
+        [existing.rows[0].id_institucion_tutor]
+      );
+
+      return res.json({
+        data: reactivated.rows[0],
+        message:
+          'Se reactivó la vinculación del Tutor Receptor con la institución',
+      });
+    }
+
+    const created = await pool.query(
+      `
+        INSERT INTO practices.institucion_tutor (
+          id_institucion,
+          id_tutor
+        )
+        VALUES ($1, $2)
+        RETURNING
+          id_institucion_tutor,
+          id_institucion,
+          id_tutor,
+          activo,
+          creado_en
+      `,
+      [idInstitucion, idTutor]
+    );
+
+    return res.status(201).json({
+      data: created.rows[0],
+      message:
+        'Tutor Receptor vinculado correctamente a la institución',
+    });
+  } catch (error) {
+    console.error('Error vinculando tutor a institución:', error);
+
+    return res.status(500).json({
+      message:
+        'No fue posible vincular el Tutor Receptor a la institución',
+    });
+  }
+});
+
+// Activar / desactivar vínculo institución-tutor
+app.patch(
+  '/api/institutions/:id/tutors/:idTutor/status',
+  async (req, res) => {
+    const idInstitucion = parsePositiveId(req.params.id);
+    const idTutor = parsePositiveId(req.params.idTutor);
+    const activo = req.body?.activo;
+
+    if (!idInstitucion || !idTutor) {
+      return res.status(400).json({
+        message: 'La vinculación indicada no es válida',
+      });
+    }
+
+    if (typeof activo !== 'boolean') {
+      return res.status(400).json({
+        message:
+          'Debe indicar si la vinculación queda activa o inactiva',
+      });
+    }
+
+    try {
+      const current = await pool.query(
+        `
+          SELECT id_institucion_tutor, activo
+          FROM practices.institucion_tutor
+          WHERE id_institucion = $1
+            AND id_tutor = $2
+        `,
+        [idInstitucion, idTutor]
+      );
+
+      if (!current.rows[0]) {
+        return res.status(404).json({
+          message:
+            'El Tutor Receptor no está vinculado a esta institución',
+        });
+      }
+
+      if (current.rows[0].activo === activo) {
+        return res.status(409).json({
+          message: activo
+            ? 'La vinculación ya se encuentra activa'
+            : 'La vinculación ya se encuentra inactiva',
+        });
+      }
+
+      // Reactivar exige que el tutor siga activo.
+      if (activo) {
+        let tutores: Map<number, any>;
+
+        try {
+          tutores = await fetchAvailableTutors();
+        } catch {
+          return res.status(503).json({
+            message: 'User Service no disponible',
+          });
+        }
+
+        if (!tutores.has(idTutor)) {
+          return res.status(400).json({
+            message:
+              'El Tutor Receptor no se encuentra activo',
+          });
+        }
+      }
+
+      const updated = await pool.query(
+        `
+          UPDATE practices.institucion_tutor
+          SET activo = $1
+          WHERE id_institucion_tutor = $2
+          RETURNING
+            id_institucion_tutor,
+            id_institucion,
+            id_tutor,
+            activo,
+            creado_en
+        `,
+        [activo, current.rows[0].id_institucion_tutor]
+      );
+
+      return res.json({
+        data: updated.rows[0],
+        message: activo
+          ? 'Vinculación activada correctamente'
+          : 'Vinculación desactivada correctamente',
+      });
+    } catch (error) {
+      console.error(
+        'Error actualizando vinculación institución-tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible actualizar la vinculación del Tutor Receptor',
+      });
+    }
+  }
+);
+
+// ======================================================
 // INICIO DEL SERVIDOR
 // ======================================================
 // ======================================================
 // PRÁCTICAS ACADÉMICAS
 // ======================================================
 
-// Listar prácticas
+// Listar prácticas académicas
 app.get('/api/practices', async (_req, res) => {
   try {
     const result = await pool.query(`
@@ -195,18 +568,15 @@ app.get('/api/practices', async (_req, res) => {
         p.id_practica,
         p.nombre,
         p.descripcion,
-        p.periodo_academico,
         p.horas_requeridas,
         p.estado,
         pr.id_programa,
-        pr.nombre AS programa,
-        i.id_institucion,
-        i.nombre AS institucion
+        pr.nombre AS programa
       FROM practices.practica p
+
       INNER JOIN practices.programa pr
         ON pr.id_programa = p.id_programa
-      INNER JOIN practices.institucion i
-        ON i.id_institucion = p.id_institucion
+
       ORDER BY p.id_practica DESC
     `);
 
@@ -214,40 +584,47 @@ app.get('/api/practices', async (_req, res) => {
       data: result.rows,
     });
   } catch (error) {
-    console.error('Error consultando prácticas:', error);
+    console.error(
+      'Error consultando prácticas:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible consultar las prácticas académicas',
+      message:
+        'No fue posible consultar las prácticas académicas',
     });
   }
 });
 
-// Crear práctica
+// Crear práctica académica
 app.post('/api/practices', async (req, res) => {
-  const nombre = String(req.body?.nombre ?? '').trim();
-  const descripcion = String(req.body?.descripcion ?? '').trim();
-  const periodoAcademico = String(
-    req.body?.periodo_academico ?? ''
+  const nombre = String(
+    req.body?.nombre ?? ''
   ).trim();
 
-  const idPrograma = Number(req.body?.id_programa);
-  const idInstitucion = Number(req.body?.id_institucion);
-  const horasRequeridas = Number(req.body?.horas_requeridas);
+  const descripcion = String(
+    req.body?.descripcion ?? ''
+  ).trim();
+
+  const idPrograma = Number(
+    req.body?.id_programa
+  );
+
+  const horasRequeridas = Number(
+    req.body?.horas_requeridas
+  );
 
   if (
     !nombre ||
     !descripcion ||
-    !periodoAcademico ||
     !Number.isInteger(idPrograma) ||
     idPrograma <= 0 ||
-    !Number.isInteger(idInstitucion) ||
-    idInstitucion <= 0 ||
     !Number.isInteger(horasRequeridas) ||
     horasRequeridas <= 0
   ) {
     return res.status(400).json({
       message:
-        'Nombre, descripción, programa, institución, periodo académico y horas requeridas son obligatorios. Las horas deben ser mayores que cero.',
+        'Nombre, descripción, programa y horas requeridas son obligatorios. Las horas deben ser mayores que cero.',
     });
   }
 
@@ -263,22 +640,8 @@ app.post('/api/practices', async (req, res) => {
 
     if ((program.rowCount ?? 0) === 0) {
       return res.status(400).json({
-        message: 'El programa académico seleccionado no existe',
-      });
-    }
-
-    const institution = await pool.query(
-      `
-        SELECT id_institucion
-        FROM practices.institucion
-        WHERE id_institucion = $1
-      `,
-      [idInstitucion]
-    );
-
-    if ((institution.rowCount ?? 0) === 0) {
-      return res.status(400).json({
-        message: 'La institución seleccionada no existe',
+        message:
+          'El programa académico seleccionado no existe',
       });
     }
 
@@ -288,18 +651,15 @@ app.post('/api/practices', async (req, res) => {
           nombre,
           descripcion,
           id_programa,
-          id_institucion,
-          periodo_academico,
           horas_requeridas
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4)
+
         RETURNING
           id_practica,
           nombre,
           descripcion,
           id_programa,
-          id_institucion,
-          periodo_academico,
           horas_requeridas,
           estado
       `,
@@ -307,21 +667,24 @@ app.post('/api/practices', async (req, res) => {
         nombre,
         descripcion,
         idPrograma,
-        idInstitucion,
-        periodoAcademico,
         horasRequeridas,
       ]
     );
 
     return res.status(201).json({
       data: result.rows[0],
-      message: 'Práctica registrada correctamente',
+      message:
+        'Práctica académica registrada correctamente',
     });
   } catch (error) {
-    console.error('Error creando práctica:', error);
+    console.error(
+      'Error creando práctica:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible registrar la práctica académica',
+      message:
+        'No fue posible registrar la práctica académica',
     });
   }
 });
@@ -333,9 +696,13 @@ app.post('/api/practices', async (req, res) => {
 app.get('/api/practices/:id', async (req, res) => {
   const idPractica = Number(req.params.id);
 
-  if (!Number.isInteger(idPractica) || idPractica <= 0) {
+  if (
+    !Number.isInteger(idPractica) ||
+    idPractica <= 0
+  ) {
     return res.status(400).json({
-      message: 'El identificador de la práctica no es válido',
+      message:
+        'El identificador de la práctica no es válido',
     });
   }
 
@@ -348,16 +715,13 @@ app.get('/api/practices/:id', async (req, res) => {
           p.descripcion,
           p.id_programa,
           pr.nombre AS programa,
-          p.id_institucion,
-          i.nombre AS institucion,
-          p.periodo_academico,
           p.horas_requeridas,
           p.estado
         FROM practices.practica p
+
         INNER JOIN practices.programa pr
           ON pr.id_programa = p.id_programa
-        INNER JOIN practices.institucion i
-          ON i.id_institucion = p.id_institucion
+
         WHERE p.id_practica = $1
       `,
       [idPractica]
@@ -365,7 +729,8 @@ app.get('/api/practices/:id', async (req, res) => {
 
     if ((result.rowCount ?? 0) === 0) {
       return res.status(404).json({
-        message: 'Práctica no encontrada',
+        message:
+          'Práctica no encontrada',
       });
     }
 
@@ -373,10 +738,14 @@ app.get('/api/practices/:id', async (req, res) => {
       data: result.rows[0],
     });
   } catch (error) {
-    console.error('Error consultando práctica:', error);
+    console.error(
+      'Error consultando práctica:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible consultar la práctica académica',
+      message:
+        'No fue posible consultar la práctica académica',
     });
   }
 });
@@ -386,38 +755,47 @@ app.get('/api/practices/:id', async (req, res) => {
 // ======================================================
 
 app.patch('/api/practices/:id', async (req, res) => {
-  const idPractica = Number(req.params.id);
+  const idPractica = Number(
+    req.params.id
+  );
 
-  const nombre = String(req.body?.nombre ?? '').trim();
-  const descripcion = String(req.body?.descripcion ?? '').trim();
-  const periodoAcademico = String(
-    req.body?.periodo_academico ?? ''
+  const nombre = String(
+    req.body?.nombre ?? ''
   ).trim();
 
-  const idPrograma = Number(req.body?.id_programa);
-  const idInstitucion = Number(req.body?.id_institucion);
-  const horasRequeridas = Number(req.body?.horas_requeridas);
+  const descripcion = String(
+    req.body?.descripcion ?? ''
+  ).trim();
 
-  if (!Number.isInteger(idPractica) || idPractica <= 0) {
+  const idPrograma = Number(
+    req.body?.id_programa
+  );
+
+  const horasRequeridas = Number(
+    req.body?.horas_requeridas
+  );
+
+  if (
+    !Number.isInteger(idPractica) ||
+    idPractica <= 0
+  ) {
     return res.status(400).json({
-      message: 'El identificador de la práctica no es válido',
+      message:
+        'El identificador de la práctica no es válido',
     });
   }
 
   if (
     !nombre ||
     !descripcion ||
-    !periodoAcademico ||
     !Number.isInteger(idPrograma) ||
     idPrograma <= 0 ||
-    !Number.isInteger(idInstitucion) ||
-    idInstitucion <= 0 ||
     !Number.isInteger(horasRequeridas) ||
     horasRequeridas <= 0
   ) {
     return res.status(400).json({
       message:
-        'Nombre, descripción, programa, institución, periodo académico y horas requeridas son obligatorios. Las horas deben ser mayores que cero.',
+        'Nombre, descripción, programa y horas requeridas son obligatorios.',
     });
   }
 
@@ -433,7 +811,8 @@ app.patch('/api/practices/:id', async (req, res) => {
 
     if ((practice.rowCount ?? 0) === 0) {
       return res.status(404).json({
-        message: 'Práctica no encontrada',
+        message:
+          'Práctica no encontrada',
       });
     }
 
@@ -448,22 +827,8 @@ app.patch('/api/practices/:id', async (req, res) => {
 
     if ((program.rowCount ?? 0) === 0) {
       return res.status(400).json({
-        message: 'El programa académico seleccionado no existe',
-      });
-    }
-
-    const institution = await pool.query(
-      `
-        SELECT id_institucion
-        FROM practices.institucion
-        WHERE id_institucion = $1
-      `,
-      [idInstitucion]
-    );
-
-    if ((institution.rowCount ?? 0) === 0) {
-      return res.status(400).json({
-        message: 'La institución seleccionada no existe',
+        message:
+          'El programa académico seleccionado no existe',
       });
     }
 
@@ -474,18 +839,21 @@ app.patch('/api/practices/:id', async (req, res) => {
           nombre = $1,
           descripcion = $2,
           id_programa = $3,
-          id_institucion = $4,
-          periodo_academico = $5,
-          horas_requeridas = $6
-        WHERE id_practica = $7
-        RETURNING *
+          horas_requeridas = $4
+        WHERE id_practica = $5
+
+        RETURNING
+          id_practica,
+          nombre,
+          descripcion,
+          id_programa,
+          horas_requeridas,
+          estado
       `,
       [
         nombre,
         descripcion,
         idPrograma,
-        idInstitucion,
-        periodoAcademico,
         horasRequeridas,
         idPractica,
       ]
@@ -493,13 +861,18 @@ app.patch('/api/practices/:id', async (req, res) => {
 
     return res.json({
       data: result.rows[0],
-      message: 'Práctica actualizada correctamente',
+      message:
+        'Práctica académica actualizada correctamente',
     });
   } catch (error) {
-    console.error('Error actualizando práctica:', error);
+    console.error(
+      'Error actualizando práctica:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible actualizar la práctica académica',
+      message:
+        'No fue posible actualizar la práctica académica',
     });
   }
 });
@@ -558,6 +931,666 @@ app.patch('/api/practices/:id/status', async (req, res) => {
 });
 
 // ======================================================
+// ASIGNACIONES INDIVIDUALES DE PRÁCTICA
+// ======================================================
+
+// ------------------------------------------------------
+// Listar asignaciones
+// ------------------------------------------------------
+
+app.get('/api/practice-assignments', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        a.id_asignacion,
+        a.id_estudiante,
+        a.id_practica,
+        p.nombre AS practica,
+        p.id_programa,
+        a.id_institucion,
+        i.nombre AS institucion,
+        a.id_tutor,
+        a.periodo_academico,
+        a.estado,
+        a.fecha_inicio,
+        a.fecha_fin,
+        a.creado_en,
+        a.actualizado_en
+
+      FROM practices.asignacion_practica a
+
+      INNER JOIN practices.practica p
+        ON p.id_practica = a.id_practica
+
+      INNER JOIN practices.institucion i
+        ON i.id_institucion = a.id_institucion
+
+      ORDER BY
+        a.creado_en DESC,
+        a.id_asignacion DESC
+    `);
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando asignaciones de práctica:',
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar las asignaciones de práctica',
+    });
+  }
+});
+
+// ------------------------------------------------------
+// Consultar asignación por ID
+// ------------------------------------------------------
+
+app.get(
+  '/api/practice-assignments/:id',
+  async (req, res) => {
+    const idAsignacion = Number(req.params.id);
+
+    if (
+      !Number.isInteger(idAsignacion) ||
+      idAsignacion <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'El identificador de la asignación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            a.id_asignacion,
+            a.id_estudiante,
+            a.id_practica,
+            p.nombre AS practica,
+            p.id_programa,
+            a.id_institucion,
+            i.nombre AS institucion,
+            a.id_tutor,
+            a.periodo_academico,
+            a.estado,
+            a.fecha_inicio,
+            a.fecha_fin,
+            a.creado_en,
+            a.actualizado_en
+
+          FROM practices.asignacion_practica a
+
+          INNER JOIN practices.practica p
+            ON p.id_practica = a.id_practica
+
+          INNER JOIN practices.institucion i
+            ON i.id_institucion = a.id_institucion
+
+          WHERE a.id_asignacion = $1
+        `,
+        [idAsignacion]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message:
+            'Asignación de práctica no encontrada',
+        });
+      }
+
+      return res.json({
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando asignación de práctica:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar la asignación de práctica',
+      });
+    }
+  }
+);
+
+// ------------------------------------------------------
+// Crear asignación individual
+// ------------------------------------------------------
+
+app.post(
+  '/api/practice-assignments',
+  async (req, res) => {
+    const idEstudiante = Number(
+      req.body?.id_estudiante
+    );
+
+    const idPractica = Number(
+      req.body?.id_practica
+    );
+
+    const idInstitucion = Number(
+      req.body?.id_institucion
+    );
+
+    const idTutor =
+      req.body?.id_tutor === null ||
+      req.body?.id_tutor === undefined ||
+      req.body?.id_tutor === ''
+        ? null
+        : Number(req.body.id_tutor);
+
+    const periodoAcademico = String(
+      req.body?.periodo_academico ?? ''
+    ).trim();
+
+    if (
+      !Number.isInteger(idEstudiante) ||
+      idEstudiante <= 0 ||
+      !Number.isInteger(idPractica) ||
+      idPractica <= 0 ||
+      !Number.isInteger(idInstitucion) ||
+      idInstitucion <= 0 ||
+      !periodoAcademico
+    ) {
+      return res.status(400).json({
+        message:
+          'Estudiante, práctica, institución y periodo académico son obligatorios',
+      });
+    }
+
+    if (
+      idTutor !== null &&
+      (
+        !Number.isInteger(idTutor) ||
+        idTutor <= 0
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          'El Tutor Receptor seleccionado no es válido',
+      });
+    }
+
+    if (
+      !/^\d{4}-[12]$/.test(
+        periodoAcademico
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          'El periodo académico debe tener el formato AAAA-1 o AAAA-2',
+      });
+    }
+
+    try {
+      // ----------------------------------------------
+      // Validar práctica curricular
+      // ----------------------------------------------
+
+      const practiceResult =
+        await pool.query(
+          `
+            SELECT
+              id_practica,
+              id_programa,
+              estado
+            FROM practices.practica
+            WHERE id_practica = $1
+          `,
+          [idPractica]
+        );
+
+      if (
+        (practiceResult.rowCount ?? 0) === 0
+      ) {
+        return res.status(400).json({
+          message:
+            'La práctica académica seleccionada no existe',
+        });
+      }
+
+      const practica =
+        practiceResult.rows[0];
+
+      if (
+        practica.estado !== 'ACTIVA'
+      ) {
+        return res.status(400).json({
+          message:
+            'No es posible crear una asignación para una práctica cerrada',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar institución receptora
+      // ----------------------------------------------
+
+      const institutionResult =
+        await pool.query(
+          `
+            SELECT id_institucion
+            FROM practices.institucion
+            WHERE id_institucion = $1
+          `,
+          [idInstitucion]
+        );
+
+      if (
+        (institutionResult.rowCount ?? 0) === 0
+      ) {
+        return res.status(400).json({
+          message:
+            'La institución receptora seleccionada no existe',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar estudiante activo en User Service
+      // ----------------------------------------------
+
+      const studentsResponse =
+        await fetch(
+          'http://localhost:3334/api/internal/students/available'
+        );
+
+      if (!studentsResponse.ok) {
+        return res.status(503).json({
+          message:
+            'User Service no disponible',
+        });
+      }
+
+      const studentsBody: any =
+        await studentsResponse.json();
+
+      const estudiante =
+        (studentsBody.data ?? []).find(
+          (student: any) =>
+            Number(
+              student.id_estudiante
+            ) === idEstudiante
+        );
+
+      if (!estudiante) {
+        return res.status(400).json({
+          message:
+            'El estudiante seleccionado no está disponible',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar compatibilidad estudiante-práctica
+      // ----------------------------------------------
+
+      if (
+        Number(estudiante.id_programa) !==
+        Number(practica.id_programa)
+      ) {
+        return res.status(400).json({
+          message:
+            'El estudiante y la práctica académica pertenecen a programas diferentes',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar tutor receptor, si fue seleccionado
+      // ----------------------------------------------
+
+      if (idTutor !== null) {
+        const tutorsResponse =
+          await fetch(
+            'http://localhost:3334/api/internal/tutors/available'
+          );
+
+        if (!tutorsResponse.ok) {
+          return res.status(503).json({
+            message:
+              'User Service no disponible',
+          });
+        }
+
+        const tutorsBody: any =
+          await tutorsResponse.json();
+
+        const tutorExiste =
+          (tutorsBody.data ?? []).some(
+            (tutor: any) =>
+              Number(tutor.id_tutor) ===
+              idTutor
+          );
+
+        if (!tutorExiste) {
+          return res.status(400).json({
+            message:
+              'El Tutor Receptor seleccionado no está disponible',
+          });
+        }
+
+        const tutorInstitution =
+          await pool.query(
+            `
+              SELECT id_institucion_tutor
+              FROM practices.institucion_tutor
+              WHERE
+                id_institucion = $1
+                AND id_tutor = $2
+                AND activo = TRUE
+              LIMIT 1
+            `,
+            [
+              idInstitucion,
+              idTutor,
+            ]
+          );
+
+        if (
+          (tutorInstitution.rowCount ?? 0) ===
+          0
+        ) {
+          return res.status(400).json({
+            message:
+              'El Tutor Receptor seleccionado no está asociado a la institución receptora',
+          });
+        }
+      }
+
+      // ----------------------------------------------
+      // Validar asignación vigente duplicada
+      // ----------------------------------------------
+
+      const existingAssignment =
+        await pool.query(
+          `
+            SELECT id_asignacion
+            FROM practices.asignacion_practica
+            WHERE
+              id_estudiante = $1
+              AND id_practica = $2
+              AND periodo_academico = $3
+              AND estado IN (
+                'ASIGNADA',
+                'EN_CURSO'
+              )
+            LIMIT 1
+          `,
+          [
+            idEstudiante,
+            idPractica,
+            periodoAcademico,
+          ]
+        );
+
+      if (
+        (existingAssignment.rowCount ?? 0) >
+        0
+      ) {
+        return res.status(409).json({
+          message:
+            'El estudiante ya tiene una asignación vigente para esta práctica y periodo académico',
+        });
+      }
+
+      // ----------------------------------------------
+      // Crear asignación
+      // ----------------------------------------------
+
+      const result = await pool.query(
+        `
+          INSERT INTO practices.asignacion_practica (
+            id_estudiante,
+            id_practica,
+            id_institucion,
+            id_tutor,
+            periodo_academico
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5
+          )
+
+          RETURNING
+            id_asignacion,
+            id_estudiante,
+            id_practica,
+            id_institucion,
+            id_tutor,
+            periodo_academico,
+            estado,
+            fecha_inicio,
+            fecha_fin,
+            creado_en,
+            actualizado_en
+        `,
+        [
+          idEstudiante,
+          idPractica,
+          idInstitucion,
+          idTutor,
+          periodoAcademico,
+        ]
+      );
+
+      return res.status(201).json({
+        data: result.rows[0],
+        message:
+          'Asignación de práctica registrada correctamente',
+      });
+    } catch (error) {
+      if (
+        (error as { code?: string })
+          ?.code === '23505'
+      ) {
+        return res.status(409).json({
+          message:
+            'Ya existe una asignación vigente para el estudiante, práctica y periodo seleccionados',
+        });
+      }
+
+      console.error(
+        'Error creando asignación de práctica:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible registrar la asignación de práctica',
+      });
+    }
+  }
+);
+
+// ------------------------------------------------------
+// Cambiar estado de una asignación
+// ------------------------------------------------------
+
+app.patch(
+  '/api/practice-assignments/:id/status',
+  async (req, res) => {
+    const idAsignacion = Number(
+      req.params.id
+    );
+
+    const nuevoEstado = String(
+      req.body?.estado ?? ''
+    )
+      .trim()
+      .toUpperCase();
+
+    if (
+      !Number.isInteger(idAsignacion) ||
+      idAsignacion <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'El identificador de la asignación no es válido',
+      });
+    }
+
+    const estadosPermitidos = [
+      'EN_CURSO',
+      'FINALIZADA',
+      'CANCELADA',
+    ];
+
+    if (
+      !estadosPermitidos.includes(
+        nuevoEstado
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          'El estado solicitado no es válido',
+      });
+    }
+
+    try {
+      const currentResult =
+        await pool.query(
+          `
+            SELECT
+              id_asignacion,
+              estado,
+              id_tutor
+            FROM practices.asignacion_practica
+            WHERE id_asignacion = $1
+          `,
+          [idAsignacion]
+        );
+
+      if (
+        (currentResult.rowCount ?? 0) === 0
+      ) {
+        return res.status(404).json({
+          message:
+            'Asignación de práctica no encontrada',
+        });
+      }
+
+      const estadoActual =
+        currentResult.rows[0].estado;
+
+      const transiciones: Record<
+        string,
+        string[]
+      > = {
+        ASIGNADA: [
+          'EN_CURSO',
+          'CANCELADA',
+        ],
+        EN_CURSO: [
+          'FINALIZADA',
+          'CANCELADA',
+        ],
+        FINALIZADA: [],
+        CANCELADA: [],
+      };
+
+      if (
+        !(
+          transiciones[estadoActual] ??
+          []
+        ).includes(nuevoEstado)
+      ) {
+        return res.status(409).json({
+          message:
+            `No es posible cambiar una asignación de ${estadoActual} a ${nuevoEstado}`,
+        });
+      }
+
+      // Con tutor, la práctica no se cierra sin el concepto
+      // de la institución (evaluación final del tutor).
+      if (
+        nuevoEstado === 'FINALIZADA' &&
+        currentResult.rows[0].id_tutor !== null &&
+        !(await findEvaluation(idAsignacion))
+      ) {
+        return res.status(409).json({
+          message:
+            'El Tutor Receptor debe registrar la evaluación final antes de finalizar la práctica',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          UPDATE practices.asignacion_practica
+
+SET
+  estado = $1::VARCHAR(20),
+
+  fecha_inicio =
+    CASE
+      WHEN $1::VARCHAR(20) = 'EN_CURSO'
+      THEN COALESCE(
+        fecha_inicio,
+        CURRENT_DATE
+      )
+      ELSE fecha_inicio
+    END,
+
+  fecha_fin =
+    CASE
+      WHEN $1::VARCHAR(20) = 'FINALIZADA'
+      THEN COALESCE(
+        fecha_fin,
+        CURRENT_DATE
+      )
+      ELSE fecha_fin
+    END,
+
+  actualizado_en = NOW()
+
+WHERE id_asignacion = $2
+
+          RETURNING
+            id_asignacion,
+            id_estudiante,
+            id_practica,
+            id_institucion,
+            id_tutor,
+            periodo_academico,
+            estado,
+            fecha_inicio,
+            fecha_fin,
+            actualizado_en
+        `,
+        [
+          nuevoEstado,
+          idAsignacion,
+        ]
+      );
+
+      return res.json({
+        data: result.rows[0],
+        message:
+          'Estado de la asignación actualizado correctamente',
+      });
+    } catch (error) {
+      console.error(
+        'Error actualizando estado de asignación:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible actualizar el estado de la asignación',
+      });
+    }
+  }
+);
+
+
+// ======================================================
 // CU03 - GRUPOS DE PRÁCTICA
 // ======================================================
 
@@ -568,6 +1601,7 @@ app.get('/api/groups', async (_req, res) => {
       SELECT
         g.id_grupo,
         g.nombre,
+        g.periodo_academico,
         g.semestre,
         g.id_docente,
         g.estado,
@@ -588,6 +1622,7 @@ app.get('/api/groups', async (_req, res) => {
       GROUP BY
         g.id_grupo,
         g.nombre,
+        g.periodo_academico,
         g.semestre,
         g.id_docente,
         g.estado,
@@ -613,6 +1648,9 @@ app.get('/api/groups', async (_req, res) => {
 // Crear grupo
 app.post('/api/groups', async (req, res) => {
   const nombre = String(req.body?.nombre ?? '').trim();
+  const periodoAcademico = String(
+  req.body?.periodo_academico ?? ''
+).trim();
 
   const idPractica = Number(req.body?.id_practica);
   const idDocente = Number(req.body?.id_docente);
@@ -630,6 +1668,7 @@ app.post('/api/groups', async (req, res) => {
 
   if (
     !nombre ||
+    !periodoAcademico ||
     !Number.isInteger(idPractica) ||
     idPractica <= 0 ||
     !Number.isInteger(idDocente) ||
@@ -637,9 +1676,18 @@ app.post('/api/groups', async (req, res) => {
   ) {
     return res.status(400).json({
       message:
-        'Nombre, práctica y Docente Asesor son obligatorios',
+        'Nombre, práctica, periodo academico y Docente Asesor son obligatorios',
     });
   }
+
+  if (
+  !/^\d{4}-[12]$/.test(periodoAcademico)
+) {
+  return res.status(400).json({
+    message:
+      'El periodo académico debe tener el formato AAAA-1 o AAAA-2',
+  });
+}
 
   if (
     semestre !== null &&
@@ -711,10 +1759,11 @@ app.post('/api/groups', async (req, res) => {
         FROM practices.grupo
         WHERE
           id_practica = $1
-          AND LOWER(nombre) = LOWER($2)
+          AND periodo_academico = $2
+          AND LOWER(nombre) = LOWER($3)
         LIMIT 1
       `,
-      [idPractica, nombre]
+      [idPractica, periodoAcademico, nombre]
     );
 
     if ((duplicateGroup.rowCount ?? 0) > 0) {
@@ -827,15 +1876,17 @@ app.post('/api/groups', async (req, res) => {
         INSERT INTO practices.grupo (
           nombre,
           id_practica,
+          periodo_academico,
           semestre,
           id_docente
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5)
 
         RETURNING
           id_grupo,
           nombre,
           id_practica,
+          periodo_academico,
           semestre,
           id_docente,
           estado
@@ -843,6 +1894,7 @@ app.post('/api/groups', async (req, res) => {
       [
         nombre,
         idPractica,
+        periodoAcademico,
         semestre,
         idDocente,
       ]
@@ -905,6 +1957,7 @@ app.get('/api/groups/:id', async (req, res) => {
           g.nombre,
           g.id_practica,
           p.nombre AS practica,
+          g.periodo_academico,
           g.semestre,
           g.id_docente,
           g.estado
@@ -993,16 +2046,15 @@ app.get('/api/groups/:id', async (req, res) => {
   }
 });
 
+
 app.patch('/api/groups/:id', async (req, res) => {
-  const idGrupo = Number(req.params.id);
+  const idGrupo = Number(
+    req.params.id
+  );
 
   const nombre = String(
     req.body?.nombre ?? ''
   ).trim();
-
-  const idPractica = Number(
-    req.body?.id_practica
-  );
 
   const idDocente = Number(
     req.body?.id_docente
@@ -1019,8 +2071,6 @@ app.patch('/api/groups/:id', async (req, res) => {
     !Number.isInteger(idGrupo) ||
     idGrupo <= 0 ||
     !nombre ||
-    !Number.isInteger(idPractica) ||
-    idPractica <= 0 ||
     !Number.isInteger(idDocente) ||
     idDocente <= 0
   ) {
@@ -1030,10 +2080,28 @@ app.patch('/api/groups/:id', async (req, res) => {
     });
   }
 
+  if (
+    semestre !== null &&
+    (
+      !Number.isInteger(semestre) ||
+      semestre < 1 ||
+      semestre > 20
+    )
+  ) {
+    return res.status(400).json({
+      message:
+        'El semestre no es válido',
+    });
+  }
+
   try {
     const current = await pool.query(
       `
-        SELECT id_grupo, estado
+        SELECT
+          id_grupo,
+          id_practica,
+          periodo_academico,
+          estado
         FROM practices.grupo
         WHERE id_grupo = $1
       `,
@@ -1042,47 +2110,32 @@ app.patch('/api/groups/:id', async (req, res) => {
 
     if ((current.rowCount ?? 0) === 0) {
       return res.status(404).json({
-        message: 'Grupo no encontrado',
+        message:
+          'Grupo no encontrado',
       });
     }
 
-    if (current.rows[0].estado !== 'ACTIVO') {
+    const grupoActual =
+      current.rows[0];
+
+    if (
+      grupoActual.estado !== 'ACTIVO'
+    ) {
       return res.status(409).json({
         message:
           'No es posible editar un grupo cerrado',
       });
     }
 
-    const practice = await pool.query(
-      `
-        SELECT id_practica, estado
-        FROM practices.practica
-        WHERE id_practica = $1
-      `,
-      [idPractica]
-    );
-
-    if ((practice.rowCount ?? 0) === 0) {
-      return res.status(400).json({
-        message:
-          'La práctica seleccionada no existe',
-      });
-    }
-
-    if (practice.rows[0].estado !== 'ACTIVA') {
-      return res.status(400).json({
-        message:
-          'La práctica seleccionada se encuentra cerrada',
-      });
-    }
-
-    const teachersResponse = await fetch(
-      'http://localhost:3334/api/internal/teachers/available'
-    );
+    const teachersResponse =
+      await fetch(
+        'http://localhost:3334/api/internal/teachers/available'
+      );
 
     if (!teachersResponse.ok) {
       return res.status(503).json({
-        message: 'User Service no disponible',
+        message:
+          'User Service no disponible',
       });
     }
 
@@ -1092,7 +2145,8 @@ app.patch('/api/groups/:id', async (req, res) => {
     const teacherExists =
       (teachersBody.data ?? []).some(
         (item: any) =>
-          Number(item.id_docente) === idDocente
+          Number(item.id_docente) ===
+          idDocente
       );
 
     if (!teacherExists) {
@@ -1102,44 +2156,60 @@ app.patch('/api/groups/:id', async (req, res) => {
       });
     }
 
-    const duplicate = await pool.query(
-      `
-        SELECT id_grupo
-        FROM practices.grupo
-        WHERE
-          id_practica = $1
-          AND LOWER(nombre) = LOWER($2)
-          AND id_grupo <> $3
-      `,
-      [idPractica, nombre, idGrupo]
-    );
+    const duplicate =
+      await pool.query(
+        `
+          SELECT id_grupo
+          FROM practices.grupo
+          WHERE
+            id_practica = $1
+            AND periodo_academico = $2
+            AND LOWER(nombre) = LOWER($3)
+            AND id_grupo <> $4
+        `,
+        [
+          grupoActual.id_practica,
+          grupoActual.periodo_academico,
+          nombre,
+          idGrupo,
+        ]
+      );
 
-    if ((duplicate.rowCount ?? 0) > 0) {
+    if (
+      (duplicate.rowCount ?? 0) > 0
+    ) {
       return res.status(409).json({
         message:
-          'Ya existe otro grupo con ese nombre para la práctica',
+          'Ya existe otro grupo con ese nombre para la práctica y periodo académico',
       });
     }
 
-    const result = await pool.query(
-      `
-        UPDATE practices.grupo
-        SET
-          nombre = $1,
-          id_practica = $2,
-          semestre = $3,
-          id_docente = $4
-        WHERE id_grupo = $5
-        RETURNING *
-      `,
-      [
-        nombre,
-        idPractica,
-        semestre,
-        idDocente,
-        idGrupo,
-      ]
-    );
+    const result =
+      await pool.query(
+        `
+          UPDATE practices.grupo
+          SET
+            nombre = $1,
+            semestre = $2,
+            id_docente = $3
+          WHERE id_grupo = $4
+
+          RETURNING
+            id_grupo,
+            nombre,
+            id_practica,
+            periodo_academico,
+            semestre,
+            id_docente,
+            estado
+        `,
+        [
+          nombre,
+          semestre,
+          idDocente,
+          idGrupo,
+        ]
+      );
 
     return res.json({
       data: result.rows[0],
@@ -1159,166 +2229,16 @@ app.patch('/api/groups/:id', async (req, res) => {
   }
 });
 
-app.patch(
-  '/api/groups/:id/students',
+// ======================================================
+// INTERNAL - ESTUDIANTES DE UN GRUPO
+// ======================================================
+
+app.get(
+  '/api/internal/groups/:idGrupo/students',
   async (req, res) => {
-    const idGrupo = Number(req.params.id);
-    const idEstudiante = Number(
-      req.body?.id_estudiante
+    const idGrupo = Number(
+      req.params.idGrupo
     );
-
-    const action = String(
-      req.body?.action ?? ''
-    )
-      .trim()
-      .toUpperCase();
-
-    if (
-      !Number.isInteger(idGrupo) ||
-      idGrupo <= 0 ||
-      !Number.isInteger(idEstudiante) ||
-      idEstudiante <= 0 ||
-      !['ADD', 'REMOVE'].includes(action)
-    ) {
-      return res.status(400).json({
-        message:
-          'La operación sobre el estudiante no es válida',
-      });
-    }
-
-    try {
-      const group = await pool.query(
-        `
-          SELECT id_grupo, estado
-          FROM practices.grupo
-          WHERE id_grupo = $1
-        `,
-        [idGrupo]
-      );
-
-      if ((group.rowCount ?? 0) === 0) {
-        return res.status(404).json({
-          message: 'Grupo no encontrado',
-        });
-      }
-
-      if (group.rows[0].estado !== 'ACTIVO') {
-        return res.status(409).json({
-          message:
-            'No es posible modificar integrantes de un grupo cerrado',
-        });
-      }
-
-      if (action === 'ADD') {
-        const studentsResponse = await fetch(
-          'http://localhost:3334/api/internal/students/available'
-        );
-
-        if (!studentsResponse.ok) {
-          return res.status(503).json({
-            message:
-              'User Service no disponible',
-          });
-        }
-
-        const studentsBody: any =
-          await studentsResponse.json();
-
-        const studentExists =
-          (studentsBody.data ?? []).some(
-            (item: any) =>
-              Number(item.id_estudiante) ===
-              idEstudiante
-          );
-
-        if (!studentExists) {
-          return res.status(400).json({
-            message:
-              'El estudiante seleccionado no está disponible',
-          });
-        }
-
-        const conflict = await pool.query(
-          `
-            SELECT
-              g.id_grupo,
-              g.nombre
-            FROM practices.grupo_estudiante ge
-            INNER JOIN practices.grupo g
-              ON g.id_grupo = ge.id_grupo
-            WHERE
-              ge.id_estudiante = $1
-              AND g.estado = 'ACTIVO'
-              AND g.id_grupo <> $2
-          `,
-          [idEstudiante, idGrupo]
-        );
-
-        if ((conflict.rowCount ?? 0) > 0) {
-          return res.status(409).json({
-            message:
-              'El estudiante ya pertenece a otro grupo activo',
-          });
-        }
-
-        await pool.query(
-          `
-            INSERT INTO practices.grupo_estudiante (
-              id_grupo,
-              id_estudiante
-            )
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `,
-          [idGrupo, idEstudiante]
-        );
-
-        return res.json({
-          message:
-            'Estudiante agregado correctamente',
-        });
-      }
-
-      const result = await pool.query(
-        `
-          DELETE FROM practices.grupo_estudiante
-          WHERE
-            id_grupo = $1
-            AND id_estudiante = $2
-          RETURNING id_estudiante
-        `,
-        [idGrupo, idEstudiante]
-      );
-
-      if ((result.rowCount ?? 0) === 0) {
-        return res.status(404).json({
-          message:
-            'El estudiante no pertenece al grupo',
-        });
-      }
-
-      return res.json({
-        message:
-          'Estudiante retirado correctamente',
-      });
-    } catch (error) {
-      console.error(
-        'Error modificando integrantes:',
-        error
-      );
-
-      return res.status(500).json({
-        message:
-          'No fue posible modificar los integrantes del grupo',
-      });
-    }
-  }
-);
-
-app.patch(
-  '/api/groups/:id/status',
-  async (req, res) => {
-    const idGrupo = Number(req.params.id);
 
     if (
       !Number.isInteger(idGrupo) ||
@@ -1331,42 +2251,1054 @@ app.patch(
     }
 
     try {
-      const result = await pool.query(
-        `
-          UPDATE practices.grupo
-          SET estado = 'CERRADO'
-          WHERE
-            id_grupo = $1
-            AND estado = 'ACTIVO'
-          RETURNING
-            id_grupo,
-            nombre,
-            estado
-        `,
-        [idGrupo]
-      );
+      const groupResult =
+        await pool.query(
+          `
+            SELECT id_grupo
+            FROM practices.grupo
+            WHERE id_grupo = $1
+          `,
+          [idGrupo]
+        );
 
-      if ((result.rowCount ?? 0) === 0) {
+      if (
+        (groupResult.rowCount ?? 0) === 0
+      ) {
         return res.status(404).json({
           message:
-            'El grupo no existe o ya se encuentra cerrado',
+            'Grupo no encontrado',
         });
       }
 
+      const result =
+        await pool.query(
+          `
+            SELECT
+              id_estudiante
+            FROM practices.grupo_estudiante
+            WHERE id_grupo = $1
+            ORDER BY id_estudiante
+          `,
+          [idGrupo]
+        );
+
       return res.json({
-        data: result.rows[0],
-        message:
-          'Grupo cerrado correctamente',
+        data: result.rows.map(
+          (item) =>
+            Number(item.id_estudiante)
+        ),
       });
     } catch (error) {
       console.error(
-        'Error cerrando grupo:',
+        'Error consultando estudiantes del grupo:',
         error
       );
 
       return res.status(500).json({
         message:
-          'No fue posible cerrar el grupo',
+          'No fue posible consultar los estudiantes del grupo',
+      });
+    }
+  }
+);
+
+// ======================================================
+// CU04 - GRUPOS ASIGNADOS A DOCENTE
+// ======================================================
+
+app.get(
+  '/api/internal/groups/by-teacher/:idDocente',
+  async (req, res) => {
+    const idDocente = Number(req.params.idDocente);
+
+    if (
+      !Number.isInteger(idDocente) ||
+      idDocente <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'El identificador del docente no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            g.id_grupo,
+            g.nombre,
+            g.semestre,
+            g.estado,
+            g.id_docente,
+
+            p.id_practica,
+            p.nombre AS practica,
+            g.periodo_academico,
+
+            COUNT(ge.id_estudiante)::int
+              AS total_estudiantes
+
+          FROM practices.grupo g
+
+          INNER JOIN practices.practica p
+            ON p.id_practica = g.id_practica
+
+          LEFT JOIN practices.grupo_estudiante ge
+            ON ge.id_grupo = g.id_grupo
+
+          WHERE g.id_docente = $1
+
+          GROUP BY
+            g.id_grupo,
+            g.nombre,
+            g.semestre,
+            g.estado,
+            g.id_docente,
+            p.id_practica,
+            p.nombre,
+            g.periodo_academico
+
+          ORDER BY g.id_grupo DESC
+        `,
+        [idDocente]
+      );
+
+      return res.json({
+        data: result.rows,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando grupos del docente:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar los grupos asignados al docente',
+      });
+    }
+  }
+);
+
+// ======================================================
+// TUTOR RECEPTOR - ASIGNACIONES A CARGO
+//
+// El tutor ve las asignaciones donde figura como tutor.
+// Cada asignación se enlaza con el grupo de seguimiento
+// académico: misma práctica + mismo período y que tenga
+// al estudiante como integrante (si hay varios, el activo
+// más reciente).
+// ======================================================
+
+// $1 = id_tutor
+const TUTOR_ASSIGNMENT_SELECT = `
+  SELECT
+    a.id_asignacion,
+    a.id_estudiante,
+    a.id_practica,
+    p.nombre AS practica,
+    a.id_institucion,
+    i.nombre AS institucion,
+    a.periodo_academico,
+    a.estado,
+    a.fecha_inicio,
+    a.fecha_fin,
+    a.creado_en,
+    g.id_grupo,
+    g.nombre AS grupo,
+    g.estado AS estado_grupo,
+    g.id_docente
+  FROM practices.asignacion_practica a
+  INNER JOIN practices.practica p
+    ON p.id_practica = a.id_practica
+  INNER JOIN practices.institucion i
+    ON i.id_institucion = a.id_institucion
+  LEFT JOIN LATERAL (
+    SELECT
+      gr.id_grupo,
+      gr.nombre,
+      gr.estado,
+      gr.id_docente
+    FROM practices.grupo gr
+    INNER JOIN practices.grupo_estudiante ge
+      ON ge.id_grupo = gr.id_grupo
+     AND ge.id_estudiante = a.id_estudiante
+    WHERE gr.id_practica = a.id_practica
+      AND gr.periodo_academico = a.periodo_academico
+    ORDER BY
+      (gr.estado = 'ACTIVO') DESC,
+      gr.id_grupo DESC
+    LIMIT 1
+  ) g ON TRUE
+  WHERE a.id_tutor = $1
+`;
+
+// Agrega nombres de estudiante y docente asesor desde
+// User Service. Si no responde, se devuelven solo IDs.
+async function withTutorAssignmentNames(rows: any[]) {
+  const students = new Map<number, any>();
+  const teachers = new Map<number, any>();
+
+  const studentIds = [
+    ...new Set(rows.map((row) => Number(row.id_estudiante))),
+  ];
+
+  try {
+    const [studentsResponse, teachersResponse] =
+      await Promise.all([
+        studentIds.length
+          ? fetch(
+              'http://localhost:3334/api/internal/students/by-ids?ids=' +
+                studentIds.join(',')
+            )
+          : null,
+        fetch(
+          'http://localhost:3334/api/internal/teachers/available'
+        ),
+      ]);
+
+    if (studentsResponse?.ok) {
+      const body: any = await studentsResponse.json();
+
+      for (const s of body.data ?? []) {
+        students.set(Number(s.id_estudiante), s);
+      }
+    }
+
+    if (teachersResponse.ok) {
+      const body: any = await teachersResponse.json();
+
+      for (const t of body.data ?? []) {
+        teachers.set(Number(t.id_docente), t);
+      }
+    }
+  } catch (error) {
+    console.error(
+      'No fue posible consultar nombres para el tutor:',
+      error
+    );
+  }
+
+  return rows.map((row) => {
+    const student = students.get(Number(row.id_estudiante));
+    const teacher = row.id_docente
+      ? teachers.get(Number(row.id_docente))
+      : null;
+
+    return {
+      ...row,
+      estudiante: {
+        id_estudiante: row.id_estudiante,
+        nombres: student?.nombres ?? null,
+        apellidos: student?.apellidos ?? null,
+        correo: student?.correo ?? null,
+        codigo_estudiante: student?.codigo_estudiante ?? null,
+        semestre: student?.semestre ?? null,
+      },
+      docente: teacher
+        ? {
+            id_docente: teacher.id_docente,
+            nombres: teacher.nombres,
+            apellidos: teacher.apellidos,
+            correo: teacher.correo,
+          }
+        : null,
+    };
+  });
+}
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments',
+  async (req, res) => {
+    const idTutor = Number(req.params.idTutor);
+
+    if (!Number.isInteger(idTutor) || idTutor <= 0) {
+      return res.status(400).json({
+        message: 'El tutor no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        TUTOR_ASSIGNMENT_SELECT +
+          `
+            ORDER BY
+              (a.estado IN ('ASIGNADA', 'EN_CURSO')) DESC,
+              a.periodo_academico DESC,
+              a.id_asignacion DESC
+          `,
+        [idTutor]
+      );
+
+      return res.json({
+        data: await withTutorAssignmentNames(result.rows),
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando asignaciones del tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar las asignaciones del tutor',
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion',
+  async (req, res) => {
+    const idTutor = Number(req.params.idTutor);
+    const idAsignacion = Number(req.params.idAsignacion);
+
+    if (
+      !Number.isInteger(idTutor) ||
+      idTutor <= 0 ||
+      !Number.isInteger(idAsignacion) ||
+      idAsignacion <= 0
+    ) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        TUTOR_ASSIGNMENT_SELECT + ' AND a.id_asignacion = $2',
+        [idTutor, idAsignacion]
+      );
+
+      // Asignación inexistente o de otro tutor: 404
+      // para no revelar asignaciones ajenas.
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      const [data] = await withTutorAssignmentNames(result.rows);
+
+      return res.json({ data });
+    } catch (error) {
+      console.error(
+        'Error consultando asignación del tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar la asignación',
+      });
+    }
+  }
+);
+
+// ======================================================
+// TUTOR RECEPTOR - BITÁCORA DE OBSERVACIONES
+//
+// Registro propio del tutor por asignación: observaciones
+// fechadas sobre el desempeño del practicante en la
+// institución. Solo con la asignación EN_CURSO; fecha entre
+// fecha_inicio y hoy (America/Bogota). No se eliminan, solo
+// se corrigen (y solo las propias).
+// ======================================================
+
+const MAX_OBSERVACION = 2000;
+
+// Asignación del tutor con la fecha de hoy en Bogotá.
+// null si no existe o es de otro tutor.
+async function findTutorAssignment(
+  idTutor: number,
+  idAsignacion: number
+) {
+  const result = await pool.query(
+    `
+      SELECT
+        id_asignacion,
+        estado,
+        -- fecha_inicio se fija con CURRENT_DATE del servidor
+        -- (UTC), que puede ir un día adelante de Bogotá.
+        to_char(
+          LEAST(
+            fecha_inicio,
+            (NOW() AT TIME ZONE 'America/Bogota')::date
+          ),
+          'YYYY-MM-DD'
+        ) AS fecha_inicio,
+        to_char(
+          (NOW() AT TIME ZONE 'America/Bogota')::date,
+          'YYYY-MM-DD'
+        ) AS hoy
+      FROM practices.asignacion_practica
+      WHERE id_asignacion = $1
+        AND id_tutor = $2
+    `,
+    [idAsignacion, idTutor]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+function parseTutorAssignmentParams(req: express.Request) {
+  const idTutor = Number(req.params.idTutor);
+  const idAsignacion = Number(req.params.idAsignacion);
+
+  if (
+    !Number.isInteger(idTutor) ||
+    idTutor <= 0 ||
+    !Number.isInteger(idAsignacion) ||
+    idAsignacion <= 0
+  ) {
+    return null;
+  }
+
+  return { idTutor, idAsignacion };
+}
+
+// Valida fecha y descripción contra la asignación.
+// Devuelve el mensaje de error o los valores limpios.
+function validateObservation(
+  body: any,
+  assignment: { fecha_inicio: string | null; hoy: string }
+): { error: string } | { fecha: string; descripcion: string } {
+  const fecha =
+    typeof body?.fecha === 'string' ? body.fecha.trim() : '';
+
+  const descripcion =
+    typeof body?.descripcion === 'string'
+      ? body.descripcion.trim()
+      : '';
+
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(fecha) ||
+    Number.isNaN(Date.parse(fecha + 'T00:00:00Z')) ||
+    new Date(fecha + 'T00:00:00Z')
+      .toISOString()
+      .slice(0, 10) !== fecha
+  ) {
+    return { error: 'La fecha de la observación no es válida' };
+  }
+
+  if (fecha > assignment.hoy) {
+    return {
+      error: 'La fecha de la observación no puede ser futura',
+    };
+  }
+
+  if (assignment.fecha_inicio && fecha < assignment.fecha_inicio) {
+    return {
+      error:
+        'La fecha de la observación no puede ser anterior al inicio de la práctica',
+    };
+  }
+
+  if (!descripcion) {
+    return { error: 'La observación es obligatoria' };
+  }
+
+  if (descripcion.length > MAX_OBSERVACION) {
+    return {
+      error: `La observación no puede superar ${MAX_OBSERVACION} caracteres`,
+    };
+  }
+
+  return { fecha, descripcion };
+}
+
+const OBSERVATION_COLUMNS = `
+  id_observacion,
+  id_asignacion,
+  id_tutor,
+  to_char(fecha, 'YYYY-MM-DD') AS fecha,
+  descripcion,
+  creado_en,
+  actualizado_en
+`;
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/observations',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          SELECT ${OBSERVATION_COLUMNS}
+          FROM practices.observacion_tutor
+          WHERE id_asignacion = $1
+          ORDER BY fecha DESC, id_observacion DESC
+        `,
+        [params.idAsignacion]
+      );
+
+      return res.json({
+        data: result.rows.map((row) => ({
+          ...row,
+          propia: Number(row.id_tutor) === params.idTutor,
+        })),
+        puede_registrar: assignment.estado === 'EN_CURSO',
+        fecha_minima: assignment.fecha_inicio,
+        fecha_maxima: assignment.hoy,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando observaciones del tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message: 'No fue posible consultar las observaciones',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/observations',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      if (assignment.estado !== 'EN_CURSO') {
+        return res.status(409).json({
+          message:
+            'Solo se registran observaciones mientras la práctica está en curso',
+        });
+      }
+
+      const values = validateObservation(req.body, assignment);
+
+      if ('error' in values) {
+        return res.status(400).json({ message: values.error });
+      }
+
+      const result = await pool.query(
+        `
+          INSERT INTO practices.observacion_tutor (
+            id_asignacion,
+            id_tutor,
+            fecha,
+            descripcion
+          )
+          VALUES ($1, $2, $3, $4)
+          RETURNING ${OBSERVATION_COLUMNS}
+        `,
+        [
+          params.idAsignacion,
+          params.idTutor,
+          values.fecha,
+          values.descripcion,
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Observación registrada correctamente',
+        data: { ...result.rows[0], propia: true },
+      });
+    } catch (error) {
+      console.error('Error registrando observación:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible registrar la observación',
+      });
+    }
+  }
+);
+
+app.put(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/observations/:idObservacion',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+    const idObservacion = Number(req.params.idObservacion);
+
+    if (
+      !params ||
+      !Number.isInteger(idObservacion) ||
+      idObservacion <= 0
+    ) {
+      return res.status(400).json({
+        message: 'Tutor, asignación u observación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      const current = await pool.query(
+        `
+          SELECT id_tutor
+          FROM practices.observacion_tutor
+          WHERE id_observacion = $1
+            AND id_asignacion = $2
+        `,
+        [idObservacion, params.idAsignacion]
+      );
+
+      if ((current.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Observación no encontrada',
+        });
+      }
+
+      if (Number(current.rows[0].id_tutor) !== params.idTutor) {
+        return res.status(403).json({
+          message:
+            'Solo puede corregir las observaciones que usted registró',
+        });
+      }
+
+      if (assignment.estado !== 'EN_CURSO') {
+        return res.status(409).json({
+          message:
+            'Las observaciones solo se pueden corregir mientras la práctica está en curso',
+        });
+      }
+
+      const values = validateObservation(req.body, assignment);
+
+      if ('error' in values) {
+        return res.status(400).json({ message: values.error });
+      }
+
+      const result = await pool.query(
+        `
+          UPDATE practices.observacion_tutor
+          SET
+            fecha = $1,
+            descripcion = $2,
+            actualizado_en = NOW()
+          WHERE id_observacion = $3
+          RETURNING ${OBSERVATION_COLUMNS}
+        `,
+        [values.fecha, values.descripcion, idObservacion]
+      );
+
+      return res.json({
+        message: 'Observación actualizada correctamente',
+        data: { ...result.rows[0], propia: true },
+      });
+    } catch (error) {
+      console.error('Error actualizando observación:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible actualizar la observación',
+      });
+    }
+  }
+);
+
+// ======================================================
+// TUTOR RECEPTOR - EVALUACIÓN FINAL
+//
+// Concepto de la institución sobre el practicante: una por
+// asignación. Se registra y corrige mientras la asignación
+// está EN_CURSO; al finalizar queda fija. Sin ella, una
+// asignación con tutor no puede pasar a FINALIZADA.
+// ======================================================
+
+const EVALUATION_COLUMNS = `
+  id_evaluacion,
+  id_asignacion,
+  id_tutor,
+  calificacion::float AS calificacion,
+  concepto,
+  recomienda_aprobacion,
+  creado_en,
+  actualizado_en
+`;
+
+async function findEvaluation(idAsignacion: number) {
+  const result = await pool.query(
+    `
+      SELECT ${EVALUATION_COLUMNS}
+      FROM practices.evaluacion_tutor
+      WHERE id_asignacion = $1
+    `,
+    [idAsignacion]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/evaluation',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      return res.json({
+        data: await findEvaluation(params.idAsignacion),
+        puede_evaluar: assignment.estado === 'EN_CURSO',
+      });
+    } catch (error) {
+      console.error('Error consultando evaluación del tutor:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible consultar la evaluación',
+      });
+    }
+  }
+);
+
+app.put(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/evaluation',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    // Calificación 0.0–5.0 con máximo un decimal.
+    const rawGrade = req.body?.calificacion;
+    const calificacion =
+      typeof rawGrade === 'number' ? rawGrade : NaN;
+
+    const concepto =
+      typeof req.body?.concepto === 'string'
+        ? req.body.concepto.trim()
+        : '';
+
+    const recomienda = req.body?.recomienda_aprobacion;
+
+    if (
+      !Number.isFinite(calificacion) ||
+      calificacion < 0 ||
+      calificacion > 5 ||
+      Math.round(calificacion * 10) !== calificacion * 10
+    ) {
+      return res.status(400).json({
+        message:
+          'La calificación debe estar entre 0.0 y 5.0 con máximo un decimal',
+      });
+    }
+
+    if (!concepto) {
+      return res.status(400).json({
+        message: 'El concepto del tutor es obligatorio',
+      });
+    }
+
+    if (concepto.length > MAX_OBSERVACION) {
+      return res.status(400).json({
+        message: `El concepto no puede superar ${MAX_OBSERVACION} caracteres`,
+      });
+    }
+
+    if (typeof recomienda !== 'boolean') {
+      return res.status(400).json({
+        message: 'Indique si recomienda aprobar la práctica',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      if (assignment.estado !== 'EN_CURSO') {
+        return res.status(409).json({
+          message:
+            'La evaluación solo se registra o corrige mientras la práctica está en curso',
+        });
+      }
+
+      // xmax = 0 identifica la fila recién insertada.
+      const result = await pool.query(
+        `
+          INSERT INTO practices.evaluacion_tutor (
+            id_asignacion,
+            id_tutor,
+            calificacion,
+            concepto,
+            recomienda_aprobacion
+          )
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (id_asignacion) DO UPDATE
+          SET
+            id_tutor = EXCLUDED.id_tutor,
+            calificacion = EXCLUDED.calificacion,
+            concepto = EXCLUDED.concepto,
+            recomienda_aprobacion = EXCLUDED.recomienda_aprobacion,
+            actualizado_en = NOW()
+          RETURNING ${EVALUATION_COLUMNS}, (xmax = 0) AS creada
+        `,
+        [
+          params.idAsignacion,
+          params.idTutor,
+          calificacion,
+          concepto,
+          recomienda,
+        ]
+      );
+
+      const { creada, ...data } = result.rows[0];
+
+      return res.status(creada ? 201 : 200).json({
+        message: creada
+          ? 'Evaluación final registrada correctamente'
+          : 'Evaluación final actualizada correctamente',
+        data,
+      });
+    } catch (error) {
+      console.error('Error guardando evaluación del tutor:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible guardar la evaluación',
+      });
+    }
+  }
+);
+
+// ======================================================
+// REGISTRO DEL TUTOR (solo lectura)
+//
+// Bitácora + evaluación final de una asignación, con el
+// nombre del tutor, para el Coordinador y el Docente Asesor.
+// ======================================================
+
+async function loadTutorRecord(assignment: {
+  id_asignacion: number;
+  id_tutor: number | null;
+}) {
+  const [observations, evaluation] = await Promise.all([
+    pool.query(
+      `
+        SELECT ${OBSERVATION_COLUMNS}
+        FROM practices.observacion_tutor
+        WHERE id_asignacion = $1
+        ORDER BY fecha DESC, id_observacion DESC
+      `,
+      [assignment.id_asignacion]
+    ),
+    findEvaluation(assignment.id_asignacion),
+  ]);
+
+  let tutor: any = null;
+
+  if (assignment.id_tutor) {
+    try {
+      tutor =
+        (await fetchAvailableTutors()).get(
+          Number(assignment.id_tutor)
+        ) ?? null;
+    } catch (error) {
+      console.error('No fue posible consultar el tutor:', error);
+    }
+  }
+
+  return {
+    tutor: assignment.id_tutor
+      ? {
+          id_tutor: Number(assignment.id_tutor),
+          nombres: tutor?.nombres ?? null,
+          apellidos: tutor?.apellidos ?? null,
+          cargo: tutor?.cargo ?? null,
+        }
+      : null,
+    observaciones: observations.rows,
+    evaluacion: evaluation,
+  };
+}
+
+// Coordinador: registro del tutor de una asignación.
+app.get(
+  '/api/practice-assignments/:id/tutor-record',
+  async (req, res) => {
+    const idAsignacion = Number(req.params.id);
+
+    if (!Number.isInteger(idAsignacion) || idAsignacion <= 0) {
+      return res.status(400).json({
+        message: 'El identificador de la asignación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT id_asignacion, id_tutor
+          FROM practices.asignacion_practica
+          WHERE id_asignacion = $1
+        `,
+        [idAsignacion]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Asignación de práctica no encontrada',
+        });
+      }
+
+      return res.json({
+        data: await loadTutorRecord(result.rows[0]),
+      });
+    } catch (error) {
+      console.error('Error consultando registro del tutor:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible consultar el registro del tutor',
+      });
+    }
+  }
+);
+
+// Docente asesor: registro del tutor sobre un estudiante de
+// su grupo. La asignación es la de la misma práctica +
+// período del grupo (si hay varias, la no cancelada más
+// reciente). Grupo ajeno → 404.
+app.get(
+  '/api/internal/teachers/:idDocente/groups/:idGrupo/students/:idEstudiante/tutor-record',
+  async (req, res) => {
+    const idDocente = Number(req.params.idDocente);
+    const idGrupo = Number(req.params.idGrupo);
+    const idEstudiante = Number(req.params.idEstudiante);
+
+    if (
+      ![idDocente, idGrupo, idEstudiante].every(
+        (id) => Number.isInteger(id) && id > 0
+      )
+    ) {
+      return res.status(400).json({
+        message: 'Docente, grupo o estudiante no válidos',
+      });
+    }
+
+    try {
+      const group = await pool.query(
+        `
+          SELECT id_practica, periodo_academico
+          FROM practices.grupo
+          WHERE id_grupo = $1
+            AND id_docente = $2
+        `,
+        [idGrupo, idDocente]
+      );
+
+      if ((group.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Grupo no encontrado',
+        });
+      }
+
+      const assignment = await pool.query(
+        `
+          SELECT
+            a.id_asignacion,
+            a.id_tutor,
+            a.estado,
+            a.fecha_inicio,
+            a.fecha_fin,
+            i.nombre AS institucion
+          FROM practices.asignacion_practica a
+          INNER JOIN practices.institucion i
+            ON i.id_institucion = a.id_institucion
+          WHERE a.id_estudiante = $1
+            AND a.id_practica = $2
+            AND a.periodo_academico = $3
+          ORDER BY
+            (a.estado <> 'CANCELADA') DESC,
+            a.id_asignacion DESC
+          LIMIT 1
+        `,
+        [
+          idEstudiante,
+          group.rows[0].id_practica,
+          group.rows[0].periodo_academico,
+        ]
+      );
+
+      // Sin asignación no hay registro del tutor; no es error.
+      if ((assignment.rowCount ?? 0) === 0) {
+        return res.json({ data: null });
+      }
+
+      const row = assignment.rows[0];
+
+      return res.json({
+        data: {
+          asignacion: row,
+          ...(await loadTutorRecord(row)),
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando registro del tutor para el docente:',
+        error
+      );
+
+      return res.status(500).json({
+        message: 'No fue posible consultar el registro del tutor',
       });
     }
   }

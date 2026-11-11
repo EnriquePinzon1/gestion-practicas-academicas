@@ -1,1 +1,507 @@
 /* You can add global styles to this file, and also import other style files */
+/* ======================================================
+   GESTIÓN DE PRÁCTICAS ACADÉMICAS
+   Paquete global de microinteracciones
+   ====================================================== */
+
+:root {
+  --ui-primary: #1d5d91;
+  --ui-primary-dark: #174b75;
+
+  --ui-success: #166534;
+  --ui-success-bg: #dcfce7;
+
+  --ui-error: #991b1b;
+  --ui-error-bg: #fee2e2;
+
+  --ui-warning: #92400e;
+  --ui-warning-bg: #fef3c7;
+
+  --ui-border: #dfe5ec;
+
+  --ui-shadow-soft:
+    0 6px 18px
+    rgba(15, 23, 42, 0.08);
+
+  --ui-shadow-medium:
+    0 10px 28px
+    rgba(15, 23, 42, 0.12);
+
+  --ui-fast: 140ms;
+  --ui-normal: 200ms;
+  --ui-slow: 260ms;
+
+  --ui-ease:
+    cubic-bezier(
+      0.2,
+      0.8,
+      0.2,
+      1
+    );
+}
+
+
+/* ======================================================
+   1. BOTONES
+   Hover + click/press + focus
+   ====================================================== */
+
+button,
+a {
+  transition:
+    transform var(--ui-fast)
+      var(--ui-ease),
+    box-shadow var(--ui-normal)
+      var(--ui-ease),
+    background-color var(--ui-normal)
+      var(--ui-ease),
+    border-color var(--ui-normal)
+      var(--ui-ease),
+    color var(--ui-normal)
+      var(--ui-ease);
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+
+/* Accesibilidad por teclado */
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid
+    rgba(29, 93, 145, 0.22);
+
+  outline-offset: 2px;
+}
+
+
+/* ======================================================
+   2. CARDS Y FILAS
+   Elevación y desplazamiento suave
+   ====================================================== */
+
+.metric-card,
+.quick-actions button,
+.summary-card,
+.activity-card,
+.form-card,
+.login-card,
+.coordinator-badge {
+  transition:
+    transform var(--ui-normal)
+      var(--ui-ease),
+    box-shadow var(--ui-normal)
+      var(--ui-ease),
+    border-color var(--ui-normal)
+      var(--ui-ease);
+}
+
+@media (hover: hover) {
+
+  .metric-card:hover,
+  .quick-actions button:hover,
+  .summary-card:hover,
+  .activity-card:hover,
+  .form-card:hover {
+    transform: translateY(-2px);
+
+    box-shadow:
+      var(--ui-shadow-soft);
+
+    border-color: #cbd5e1;
+  }
+
+  .list-item:hover,
+  .delivery-row:hover {
+    transform: translateX(3px);
+  }
+
+  .navigation a:hover {
+    transform: translateX(3px);
+  }
+}
+
+
+/* ======================================================
+   3. SPINNER PARA BOTONES
+   Agregar clase .ui-loading
+   ====================================================== */
+
+.ui-loading {
+  pointer-events: none;
+}
+
+.ui-loading::before {
+  content: '';
+
+  display: inline-block;
+
+  width: 14px;
+  height: 14px;
+
+  margin-right: 8px;
+
+  vertical-align: -2px;
+
+  border: 2px solid
+    currentColor;
+
+  border-top-color:
+    transparent;
+
+  border-radius: 50%;
+
+  animation:
+    ui-spin 650ms linear infinite;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* ======================================================
+   4. FEEDBACK / TOAST
+   ====================================================== */
+
+.ui-toast-stack {
+  position: fixed;
+
+  top: 20px;
+  right: 20px;
+
+  z-index: 9999;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  width:
+    min(380px, calc(100vw - 40px));
+
+  pointer-events: none;
+}
+
+.ui-toast {
+  padding: 13px 16px;
+
+  border: 1px solid
+    var(--ui-border);
+
+  border-radius: 10px;
+
+  background: #ffffff;
+
+  box-shadow:
+    var(--ui-shadow-medium);
+
+  font-size: 14px;
+  line-height: 1.4;
+
+  pointer-events: auto;
+
+  animation:
+    ui-toast-in
+    var(--ui-slow)
+    var(--ui-ease);
+}
+
+.ui-toast.success {
+  background:
+    var(--ui-success-bg);
+
+  border-color: #bbf7d0;
+
+  color:
+    var(--ui-success);
+}
+
+.ui-toast.error {
+  background:
+    var(--ui-error-bg);
+
+  border-color: #fecaca;
+
+  color:
+    var(--ui-error);
+}
+
+.ui-toast.warning {
+  background:
+    var(--ui-warning-bg);
+
+  border-color: #fde68a;
+
+  color:
+    var(--ui-warning);
+}
+
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform:
+      translateY(-8px)
+      scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform:
+      translateY(0)
+      scale(1);
+  }
+}
+
+
+/* También animamos mensajes normales existentes */
+
+.alert,
+.message {
+  animation:
+    ui-feedback-in
+    var(--ui-normal)
+    var(--ui-ease);
+}
+
+@keyframes ui-feedback-in {
+  from {
+    opacity: 0;
+    transform:
+      translateY(-5px);
+  }
+
+  to {
+    opacity: 1;
+    transform:
+      translateY(0);
+  }
+}
+
+
+/* ======================================================
+   5. ELEMENTOS DINÁMICOS
+   Agregar / eliminar preguntas, filas, etc.
+   ====================================================== */
+
+.ui-enter {
+  animation:
+    ui-enter
+    var(--ui-slow)
+    var(--ui-ease);
+}
+
+.ui-exit {
+  pointer-events: none;
+
+  animation:
+    ui-exit
+    160ms
+    ease
+    forwards;
+}
+
+@keyframes ui-enter {
+  from {
+    opacity: 0;
+
+    transform:
+      translateY(8px)
+      scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      translateY(0)
+      scale(1);
+  }
+}
+
+@keyframes ui-exit {
+  from {
+    opacity: 1;
+
+    transform:
+      translateY(0)
+      scale(1);
+  }
+
+  to {
+    opacity: 0;
+
+    transform:
+      translateY(-5px)
+      scale(0.98);
+  }
+}
+
+
+/* ======================================================
+   ESTADOS DISABLED
+   ====================================================== */
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+
+/* ======================================================
+   ACCESIBILIDAD
+   Usuario que solicita reducir animaciones
+   ====================================================== */
+
+@media (
+  prefers-reduced-motion: reduce
+) {
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+
+    animation-duration:
+      0.01ms !important;
+
+    animation-iteration-count:
+      1 !important;
+
+    transition-duration:
+      0.01ms !important;
+  }
+}
+
+/* ======================================================
+   EXTENSIONES DEL PAQUETE VISUAL
+   Formularios, tablas, estados y entrada de secciones
+   ====================================================== */
+
+
+/* ------------------------------------------------------
+   CAMPOS DE FORMULARIO
+   ------------------------------------------------------ */
+
+input,
+select,
+textarea {
+  transition:
+    border-color var(--ui-normal)
+      var(--ui-ease),
+    box-shadow var(--ui-normal)
+      var(--ui-ease),
+    background-color var(--ui-normal)
+      var(--ui-ease);
+}
+
+@media (hover: hover) {
+
+  input:hover,
+  select:hover,
+  textarea:hover {
+    border-color: #94a3b8;
+  }
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+
+  border-color:
+    var(--ui-primary);
+
+  box-shadow:
+    0 0 0 3px
+    rgba(29, 93, 145, 0.12);
+}
+
+
+/* ------------------------------------------------------
+   TABLAS
+   ------------------------------------------------------ */
+
+.table-wrapper {
+  transition:
+    box-shadow var(--ui-normal)
+      var(--ui-ease),
+    border-color var(--ui-normal)
+      var(--ui-ease);
+}
+
+tbody tr {
+  transition:
+    background-color var(--ui-fast)
+      var(--ui-ease);
+}
+
+tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+
+/* ------------------------------------------------------
+   BADGES / ESTADOS
+   ------------------------------------------------------ */
+
+.status,
+.state {
+  transition:
+    transform var(--ui-fast)
+      var(--ui-ease),
+    background-color var(--ui-normal)
+      var(--ui-ease),
+    color var(--ui-normal)
+      var(--ui-ease);
+}
+
+@media (hover: hover) {
+
+  .status:hover,
+  .state:hover {
+    transform: translateY(-1px);
+  }
+}
+
+
+/* ------------------------------------------------------
+   MENSAJES DE ESTADO
+   ------------------------------------------------------ */
+
+.state-message {
+  animation:
+    ui-feedback-in
+    var(--ui-normal)
+    var(--ui-ease);
+}
+
+
+/* ------------------------------------------------------
+   ENTRADAS ESCALONADAS
+   ------------------------------------------------------ */
+
+.ui-delay-1 {
+  animation-delay: 50ms;
+  animation-fill-mode: both;
+}
+
+.ui-delay-2 {
+  animation-delay: 100ms;
+  animation-fill-mode: both;
+}
+
+.ui-delay-3 {
+  animation-delay: 150ms;
+  animation-fill-mode: both;
+}

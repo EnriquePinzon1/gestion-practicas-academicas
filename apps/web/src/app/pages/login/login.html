@@ -45,6 +45,14 @@
 <button type="submit" [disabled]="loading()">
   {{ loading() ? 'Ingresando...' : 'Iniciar sesión' }}
 </button>
+<button
+  class="recover-button"
+  type="button"
+  [disabled]="loading()"
+  (click)="recoverPassword()"
+>
+  ¿Olvidaste tu contraseña?
+</button>
 
     </form>
 

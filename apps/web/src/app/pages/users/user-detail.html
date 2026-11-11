@@ -104,6 +104,23 @@
         </section>
       }
 
+      @if (user.rol === 'TUTOR_RECEPTOR') {
+        <section>
+          <h2>Información del tutor receptor</h2>
+
+          <div class="grid">
+
+            <div class="item">
+              <span>Cargo</span>
+              <strong>
+                {{ user.cargo || 'No registrado' }}
+              </strong>
+            </div>
+
+          </div>
+        </section>
+      }
+
       <div class="buttons">
         <button
           class="secondary"

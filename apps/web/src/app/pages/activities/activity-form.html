@@ -1,0 +1,390 @@
+<section class="activity-form-page">
+
+  <header class="page-header">
+
+    <div>
+
+      <span class="eyebrow">
+        Actividades de seguimiento
+      </span>
+
+     <h1>
+  {{
+    isEditMode()
+      ? 'Editar actividad'
+      : 'Crear actividad'
+  }}
+</h1>
+
+<p>
+  {{
+    isEditMode()
+      ? 'Modifica la información permitida de la actividad.'
+      : 'Publica una actividad para uno de tus grupos de práctica.'
+  }}
+</p>
+
+    </div>
+
+  </header>
+
+
+  <div
+  class="ui-toast-stack"
+  aria-live="polite"
+>
+
+  @if (errorMessage()) {
+
+    <div class="ui-toast error">
+      {{ errorMessage() }}
+    </div>
+
+  }
+
+  @if (successMessage()) {
+
+    <div class="ui-toast success">
+      {{ successMessage() }}
+    </div>
+
+  }
+
+</div>
+
+
+  @if (loading()) {
+
+    <div class="loading">
+      Cargando grupos disponibles...
+    </div>
+
+  } @else {
+
+    <form
+      class="activity-form"
+      (ngSubmit)="save()"
+    >
+
+      <section class="form-card">
+
+        <div class="section-heading">
+
+          <div>
+
+            <span class="step">
+              1
+            </span>
+
+            <div>
+              <h2>
+                Información general
+              </h2>
+
+              <p>
+                Selecciona el grupo y
+                describe la actividad.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div class="field">
+
+          <label for="group">
+            Grupo de práctica *
+          </label>
+
+          <select
+            id="group"
+            name="group"
+            [(ngModel)]="selectedGroupId"
+	    [disabled]="isEditMode()"
+          >
+
+            <option
+              [ngValue]="null"
+            >
+              Seleccione un grupo
+            </option>
+
+            @for (
+              group of availableGroups();
+              track group.id_grupo
+            ) {
+
+              <option
+                [ngValue]="group.id_grupo"
+              >
+                {{ group.nombre }}
+                —
+                {{ group.practica }}
+              </option>
+
+            }
+
+          </select>
+
+
+          @if (
+            groups().length === 0
+          ) {
+
+            <small class="field-help error-text">
+              No tienes grupos activos
+              disponibles para publicar
+              actividades.
+            </small>
+
+          }
+
+        </div>
+
+
+        <div class="field">
+
+          <label for="title">
+            Título *
+          </label>
+
+          <input
+            id="title"
+            name="title"
+            type="text"
+            [(ngModel)]="title"
+            placeholder="Ej. Informe de seguimiento inicial"
+            maxlength="180"
+          />
+
+        </div>
+
+
+        <div class="field">
+
+          <label for="description">
+            Descripción o instrucciones *
+          </label>
+
+          <textarea
+            id="description"
+            name="description"
+            [(ngModel)]="description"
+            placeholder="Explique al estudiante qué debe realizar..."
+            rows="5"
+          ></textarea>
+
+        </div>
+
+      </section>
+
+
+      <section class="form-card">
+
+        <div class="section-heading">
+
+          <div>
+
+            <span class="step">
+              2
+            </span>
+
+            <div>
+              <h2>
+                Fecha límite
+              </h2>
+
+              <p>
+                Define hasta cuándo podrán
+                realizar la actividad.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div class="date-grid">
+
+          <div class="field">
+
+            <label for="deadlineDate">
+              Fecha *
+            </label>
+
+            <input
+              id="deadlineDate"
+              name="deadlineDate"
+              type="date"
+              [(ngModel)]="deadlineDate"
+            />
+
+          </div>
+
+
+          <div class="field">
+
+            <label for="deadlineTime">
+              Hora *
+            </label>
+
+            <input
+              id="deadlineTime"
+              name="deadlineTime"
+              type="time"
+              [(ngModel)]="deadlineTime"
+            />
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <section class="form-card">
+
+        <div class="section-heading questions-heading">
+
+          <div>
+
+            <span class="step">
+              3
+            </span>
+
+            <div>
+              <h2>
+                Preguntas
+              </h2>
+
+              <p>
+                Agrega una o varias preguntas
+                para los estudiantes.
+              </p>
+            </div>
+
+          </div>
+
+
+          <button
+            type="button"
+            class="secondary-button"
+            (click)="addQuestion()"
+          >
+            + Agregar pregunta
+          </button>
+
+        </div>
+
+
+        <div class="questions">
+
+          @for (
+            question of questions();
+            track $index;
+            let index = $index
+          ) {
+
+            <div
+  class="question-card ui-enter"
+  [class.ui-exit]="
+    removingQuestionIndex() === index
+  "
+>
+
+              <div class="question-number">
+                Pregunta
+                {{ index + 1 }}
+              </div>
+
+
+              <div class="question-content">
+
+                <textarea
+                  [name]="
+                    'question-' + index
+                  "
+                  [ngModel]="question"
+                  (ngModelChange)="
+                    updateQuestion(
+                      index,
+                      $event
+                    )
+                  "
+                  placeholder="Escriba el enunciado de la pregunta..."
+                  rows="3"
+                ></textarea>
+
+              </div>
+
+
+              <button
+                type="button"
+                class="remove-button"
+                title="Eliminar pregunta"
+                [disabled]="
+                  questions().length === 1
+                "
+                (click)="
+                  removeQuestion(index)
+                "
+              >
+                ×
+              </button>
+
+            </div>
+
+          }
+
+        </div>
+
+      </section>
+
+
+      <div class="form-actions">
+
+        <button
+          type="button"
+          class="cancel-button"
+          [disabled]="saving()"
+          (click)="cancel()"
+        >
+          Cancelar
+        </button>
+
+
+        <button
+  type="submit"
+  class="primary-button"
+  [class.ui-loading]="saving()"
+  [disabled]="
+    saving() ||
+    availableGroups().length === 0 ||
+    activityState() === 'CERRADA'
+  "
+>
+  {{
+    saving()
+      ? (
+          isEditMode()
+            ? 'Guardando...'
+            : 'Publicando...'
+        )
+      : (
+          isEditMode()
+            ? 'Guardar cambios'
+            : 'Publicar actividad'
+        )
+  }}
+</button>
+
+      </div>
+
+    </form>
+
+  }
+
+</section>

@@ -1,0 +1,148 @@
+<section class="follow-up-page">
+
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Tutor Receptor</span>
+      <h1>Mis practicantes</h1>
+      <p>
+        Estudiantes que realizan su práctica bajo tu tutoría
+        y su avance en el seguimiento académico.
+      </p>
+    </div>
+  </header>
+
+  @if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  }
+
+  <section class="summary-grid three">
+    <article class="summary-card">
+      <span>Practicantes vigentes</span>
+      <strong>{{ current().length }}</strong>
+    </article>
+    <article class="summary-card">
+      <span>En curso</span>
+      <strong>{{ inProgress() }}</strong>
+    </article>
+    <article class="summary-card">
+      <span>Finalizadas</span>
+      <strong>{{ finished() }}</strong>
+    </article>
+  </section>
+
+  <section class="filters with-action">
+
+    <div class="field">
+      <label for="search">Buscar</label>
+      <input
+        id="search"
+        type="text"
+        placeholder="Estudiante, práctica, institución o período..."
+        [ngModel]="searchTerm()"
+        (ngModelChange)="searchTerm.set($event)"
+      />
+    </div>
+
+    <div class="field">
+      <label for="status">Estado</label>
+      <select
+        id="status"
+        [ngModel]="statusFilter()"
+        (ngModelChange)="statusFilter.set($event)"
+      >
+        <option value="VIGENTES">Vigentes</option>
+        <option value="ASIGNADA">Asignadas</option>
+        <option value="EN_CURSO">En curso</option>
+        <option value="FINALIZADA">Finalizadas</option>
+        <option value="CANCELADA">Canceladas</option>
+        <option value="TODAS">Todas</option>
+      </select>
+    </div>
+
+    <button
+      type="button"
+      class="secondary-button clear-button"
+      (click)="clearFilters()"
+    >
+      Limpiar
+    </button>
+
+  </section>
+
+  <section class="panel">
+
+    <div class="panel-heading">
+      <h2>Practicantes</h2>
+      <p>{{ filtered().length }} resultado(s)</p>
+    </div>
+
+    @if (loading()) {
+      <div class="loading">Cargando practicantes...</div>
+    } @else if (filtered().length === 0) {
+      <div class="empty-state">
+        <h3>Sin practicantes</h3>
+        <p>
+          @if (assignments().length === 0) {
+            Aún no tienes estudiantes asignados.
+          } @else {
+            Ningún practicante coincide con los filtros.
+          }
+        </p>
+      </div>
+    } @else {
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Estudiante</th>
+              <th>Práctica</th>
+              <th>Institución</th>
+              <th>Período</th>
+              <th>Estado</th>
+              <th>Inicio</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of filtered(); track a.id_asignacion) {
+              <tr>
+                <td>
+                  <div class="student">
+                    <strong>{{ studentName(a.estudiante) }}</strong>
+                    <span>{{ a.estudiante.codigo_estudiante ?? 'Sin código' }}</span>
+                  </div>
+                </td>
+                <td>{{ a.practica }}</td>
+                <td>{{ a.institucion }}</td>
+                <td class="nowrap">{{ a.periodo_academico }}</td>
+                <td>
+                  <span class="status" [class]="'status status-' + a.estado.toLowerCase()">
+                    {{ statusLabel(a.estado) }}
+                  </span>
+                </td>
+                <td class="nowrap">
+                  @if (a.fecha_inicio) {
+                    {{ a.fecha_inicio | date: 'dd/MM/yyyy' : 'UTC' }}
+                  } @else {
+                    <span class="muted">—</span>
+                  }
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="view(a.id_asignacion)"
+                  >
+                    Ver seguimiento
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+  </section>
+
+</section>

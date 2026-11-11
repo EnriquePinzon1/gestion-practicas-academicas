@@ -1,0 +1,153 @@
+:host {
+  display: block;
+  min-height: 100vh;
+  background: #f5f7fb;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #1f2937;
+}
+
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 32px;
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  color: #111827;
+}
+
+.header p {
+  margin: 0 0 24px;
+  color: #6b7280;
+  font-size: 15px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chip {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 14px;
+  text-align: left;
+}
+
+.chip strong {
+  font-size: 26px;
+  color: #111827;
+}
+
+.chip.selected {
+  border-color: #111827;
+  box-shadow: 0 0 0 2px #111827 inset;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  text-align: left;
+  transition: border-color 0.2s ease;
+}
+
+.item:hover {
+  border-color: #9ca3af;
+}
+
+.item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.item-main strong {
+  color: #111827;
+  font-size: 16px;
+}
+
+.item-main span {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.item-main .sent {
+  color: #166534;
+}
+
+.status {
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pendiente.status {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.entregada.status {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.no_entregada.status {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.empty {
+  padding: 28px;
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.alert {
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  color: #991b1b;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 24px 16px;
+  }
+
+  .summary {
+    grid-template-columns: 1fr;
+  }
+}

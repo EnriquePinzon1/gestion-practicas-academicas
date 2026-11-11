@@ -1,0 +1,89 @@
+<section class="follow-up-page">
+
+  <button type="button" class="back-link" (click)="back()">
+    ← Volver al seguimiento del grupo
+  </button>
+
+  @if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="panel loading">Cargando historial...</div>
+  } @else if (history(); as h) {
+
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">Historial de seguimiento</span>
+        <h1>{{ studentName(h.estudiante) }}</h1>
+        <p>
+          {{ h.estudiante.codigo_estudiante ?? 'Sin código' }}
+          @if (h.estudiante.correo) {
+            · {{ h.estudiante.correo }}
+          }
+        </p>
+        <p class="group-line">
+          {{ h.grupo.nombre }} · {{ h.grupo.practica }} ·
+          Período {{ h.grupo.periodo_academico }}
+        </p>
+        <div class="tags">
+          @if (!h.estudiante.en_grupo) {
+            <span class="tag muted-tag">Retirado del grupo</span>
+          }
+          @if (h.estudiante.estado_usuario === 'INACTIVO') {
+            <span class="tag muted-tag">Usuario inactivo</span>
+          }
+        </div>
+      </div>
+    </header>
+
+    <section class="summary-grid">
+      <article class="summary-card">
+        <span>Entregadas</span>
+        <strong>{{ h.resumen.entregadas }} / {{ h.resumen.total }}</strong>
+      </article>
+      <article class="summary-card">
+        <span>Pendientes (en plazo)</span>
+        <strong>{{ h.resumen.pendientes }}</strong>
+      </article>
+      <article class="summary-card">
+        <span>No entregadas</span>
+        <strong [class.warn]="h.resumen.no_entregadas > 0">
+          {{ h.resumen.no_entregadas }}
+        </strong>
+      </article>
+      <article class="summary-card">
+        <span>Promedio ({{ h.resumen.calificadas }} calificadas)</span>
+        <strong>{{ formatGrade(h.resumen.promedio) }}</strong>
+      </article>
+    </section>
+
+    <app-tutor-record-view
+      [endpoint]="tutorRecordEndpoint()"
+      [showAssignment]="true"
+    />
+
+    <section class="panel">
+
+      <div class="panel-heading">
+        <h2>Actividades</h2>
+        <p>Ordenadas por fecha límite.</p>
+      </div>
+
+      @if (h.actividades.length === 0) {
+        <div class="empty-state">
+          <h3>Sin actividades</h3>
+          <p>El estudiante aún no ha recibido actividades en este grupo.</p>
+        </div>
+      } @else {
+        <app-follow-up-timeline
+          [activities]="h.actividades"
+          [showActivityLink]="true"
+          (openActivity)="viewActivity($event)"
+        />
+      }
+
+    </section>
+  }
+
+</section>

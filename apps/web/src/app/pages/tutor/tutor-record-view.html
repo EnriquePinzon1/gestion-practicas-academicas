@@ -1,0 +1,95 @@
+<section class="panel section-gap">
+  <div class="panel-heading">
+    <h2>Registro del tutor receptor</h2>
+    <p>Evaluación final y bitácora de la institución (solo lectura).</p>
+  </div>
+
+  <div class="observations-body">
+
+    @if (errorMessage()) {
+      <div class="alert error">{{ errorMessage() }}</div>
+    }
+
+    @if (!loaded()) {
+      <p class="muted">Cargando registro del tutor...</p>
+    } @else if (!errorMessage()) {
+
+      @if (record(); as r) {
+
+        <p class="record-meta">
+          <strong>{{ tutorName(r) }}</strong>
+          @if (r.tutor?.cargo) {
+            · {{ r.tutor.cargo }}
+          }
+          @if (showAssignment() && r.asignacion; as a) {
+            <br />
+            {{ a.institucion }} · asignación #{{ a.id_asignacion }}
+          }
+        </p>
+
+        @if (!r.tutor) {
+          <div class="readonly-note">
+            La asignación no tiene tutor receptor; no hay
+            evaluación ni bitácora de la institución.
+          </div>
+        } @else {
+
+          <h3 class="subheading">Evaluación final</h3>
+
+          @if (r.evaluacion; as e) {
+            <div class="evaluation-result">
+              <div class="grade">
+                <span>Calificación</span>
+                <strong>{{ e.calificacion.toFixed(1) }}</strong>
+              </div>
+              <div class="verdict" [class.negative]="!e.recomienda_aprobacion">
+                {{ e.recomienda_aprobacion ? 'Recomienda aprobar' : 'No recomienda aprobar' }}
+              </div>
+            </div>
+            <p class="concept">{{ e.concepto }}</p>
+            <small class="muted">
+              @if (wasEdited(e)) {
+                Corregida {{ e.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}
+              } @else {
+                Registrada {{ e.creado_en | date: 'dd/MM/yyyy, HH:mm' }}
+              }
+            </small>
+          } @else {
+            <div class="readonly-note">
+              El tutor aún no ha registrado la evaluación final.
+            </div>
+          }
+
+          <h3 class="subheading">
+            Bitácora ({{ r.observaciones.length }})
+          </h3>
+
+          @if (r.observaciones.length === 0) {
+            <p class="muted">Sin observaciones registradas.</p>
+          } @else {
+            <ol class="observation-list">
+              @for (o of r.observaciones; track o.id_observacion) {
+                <li>
+                  <div class="observation-head">
+                    <strong>{{ o.fecha | date: 'dd/MM/yyyy' : 'UTC' }}</strong>
+                    @if (wasEdited(o)) {
+                      <small>Corregida {{ o.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}</small>
+                    }
+                  </div>
+                  <p>{{ o.descripcion }}</p>
+                </li>
+              }
+            </ol>
+          }
+        }
+
+      } @else {
+        <div class="readonly-note">
+          El estudiante no tiene una asignación de práctica para
+          esta práctica y período, por lo que no hay registro
+          del tutor receptor.
+        </div>
+      }
+    }
+  </div>
+</section>

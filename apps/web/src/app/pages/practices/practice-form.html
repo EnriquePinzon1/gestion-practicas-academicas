@@ -1,7 +1,11 @@
 <div class="page">
   <div class="card">
     <h1>
-      {{ editMode() ? 'Editar Práctica' : 'Registrar Práctica' }}
+      {{
+        editMode()
+          ? 'Editar Práctica Académica'
+          : 'Registrar Práctica Académica'
+      }}
     </h1>
 
     @if (errorMessage()) {
@@ -45,40 +49,17 @@
             Seleccione un programa
           </option>
 
-          @for (programa of programas(); track programa.id_programa) {
-            <option [ngValue]="programa.id_programa">
+          @for (
+            programa of programas();
+            track programa.id_programa
+          ) {
+            <option
+              [ngValue]="programa.id_programa"
+            >
               {{ programa.nombre }}
             </option>
           }
         </select>
-      </label>
-
-      <label>
-        Institución receptora *
-        <select
-          [(ngModel)]="idInstitucion"
-          name="idInstitucion"
-        >
-          <option [ngValue]="null">
-            Seleccione una institución
-          </option>
-
-          @for (institucion of instituciones(); track institucion.id_institucion) {
-            <option [ngValue]="institucion.id_institucion">
-              {{ institucion.nombre }}
-            </option>
-          }
-        </select>
-      </label>
-
-      <label>
-        Periodo académico *
-        <input
-          type="text"
-          placeholder="Ejemplo: 2026-2"
-          [(ngModel)]="periodoAcademico"
-          name="periodoAcademico"
-        />
       </label>
 
       <label>
@@ -105,7 +86,11 @@
           class="primary"
           [disabled]="loading()"
         >
-          {{ editMode() ? 'Guardar cambios' : 'Guardar' }}
+          {{
+            editMode()
+              ? 'Guardar cambios'
+              : 'Guardar práctica'
+          }}
         </button>
       </div>
     </form>

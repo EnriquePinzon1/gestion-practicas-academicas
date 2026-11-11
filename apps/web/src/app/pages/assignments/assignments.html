@@ -1,0 +1,178 @@
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Asignaciones de Práctica</h1>
+
+      <p>
+        Define dónde y con quién realiza cada estudiante su práctica académica.
+      </p>
+    </div>
+
+    <button
+      class="primary"
+      (click)="newAssignment()"
+    >
+      Nueva asignación
+    </button>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert success">
+      {{ successMessage() }}
+    </div>
+  }
+
+  <div class="filters">
+    <input
+      type="text"
+      placeholder="Buscar por estudiante, práctica, institución o tutor"
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)"
+    />
+
+    <select
+      [ngModel]="periodFilter()"
+      (ngModelChange)="periodFilter.set($event)"
+    >
+      <option value="">
+        Todos los periodos
+      </option>
+
+      @for (periodo of periodos(); track periodo) {
+        <option [value]="periodo">
+          {{ periodo }}
+        </option>
+      }
+    </select>
+
+    <select
+      [ngModel]="statusFilter()"
+      (ngModelChange)="statusFilter.set($event)"
+    >
+      <option value="">
+        Todos los estados
+      </option>
+
+      <option value="ASIGNADA">Asignada</option>
+      <option value="EN_CURSO">En curso</option>
+      <option value="FINALIZADA">Finalizada</option>
+      <option value="CANCELADA">Cancelada</option>
+    </select>
+
+    <button
+      class="secondary"
+      (click)="clearFilters()"
+    >
+      Limpiar filtros
+    </button>
+  </div>
+
+  @if (loading()) {
+    <p>Cargando asignaciones...</p>
+  } @else {
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Estudiante</th>
+            <th>Práctica</th>
+            <th>Institución</th>
+            <th>Tutor receptor</th>
+            <th>Periodo</th>
+            <th>Estado</th>
+            <th>Inicio</th>
+            <th>Fin</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          @for (
+            asignacion of filteredAssignments();
+            track asignacion.id_asignacion
+          ) {
+            <tr>
+              <td class="strong">
+                {{ estudiante(asignacion) }}
+              </td>
+
+              <td>{{ asignacion.practica }}</td>
+
+              <td>{{ asignacion.institucion }}</td>
+
+              <td
+                [class.muted]="
+                  asignacion.id_tutor === null
+                "
+              >
+                {{ tutor(asignacion) }}
+              </td>
+
+              <td class="nowrap">{{ asignacion.periodo_academico }}</td>
+
+              <td>
+                <span
+                  class="status"
+                  [ngClass]="
+                    'status-' +
+                    asignacion.estado.toLowerCase()
+                  "
+                >
+                  {{ etiquetas[asignacion.estado] }}
+                </span>
+              </td>
+
+              <td class="nowrap">
+                {{ formatearFecha(asignacion.fecha_inicio) }}
+              </td>
+
+              <td class="nowrap">
+                {{ formatearFecha(asignacion.fecha_fin) }}
+              </td>
+
+              <td>
+                <div class="actions">
+                  <button
+                    (click)="viewAssignment(asignacion)"
+                  >
+                    Ver
+                  </button>
+
+                  @for (
+                    accion of acciones(asignacion.estado);
+                    track accion.estado
+                  ) {
+                    <button
+                      [class.danger]="accion.peligrosa"
+                      [disabled]="
+                        updatingId() ===
+                        asignacion.id_asignacion
+                      "
+                      (click)="
+                        changeStatus(asignacion, accion)
+                      "
+                    >
+                      {{ accion.etiqueta }}
+                    </button>
+                  }
+                </div>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="9">
+                No se encontraron asignaciones.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

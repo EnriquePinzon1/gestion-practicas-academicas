@@ -1,0 +1,330 @@
+// Estilos compartidos por las páginas de seguimiento
+// (resumen del grupo e historial del estudiante).
+
+:host {
+  display: block;
+}
+
+.follow-up-page {
+  padding: 36px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+
+  h1 {
+    margin: 6px 0 8px;
+    font-size: 32px;
+    color: #10233f;
+  }
+
+  p {
+    margin: 0;
+    color: #718096;
+    max-width: 650px;
+  }
+}
+
+.eyebrow {
+  color: #1d5d91;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.secondary-button {
+  padding: 8px 12px;
+  border: 1px solid #d5dce5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #21415f;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: 0.2s ease;
+
+  &:hover {
+    background: #f6f8fb;
+  }
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #dfe5ec;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+
+  label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  input,
+  select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    font-size: 14px;
+    color: #1e293b;
+
+    &:focus {
+      outline: none;
+      border-color: #1d5d91;
+      box-shadow: 0 0 0 3px rgba(29, 93, 145, 0.12);
+    }
+  }
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  background: #ffffff;
+  border: 1px solid #dfe5ec;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+
+  span {
+    display: block;
+    color: #718096;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  strong {
+    display: block;
+    color: #10233f;
+    font-size: 28px;
+
+    &.text {
+      font-size: 17px;
+      line-height: 1.35;
+    }
+  }
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #dfe5ec;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.panel-heading {
+  padding: 20px 22px;
+  border-bottom: 1px solid #e7ebf0;
+
+  h2 {
+    margin: 0 0 4px;
+    color: #10233f;
+    font-size: 20px;
+  }
+
+  p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 13px;
+  }
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead {
+  background: #f9fafb;
+}
+
+th {
+  padding: 13px 14px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+td {
+  padding: 14px;
+  font-size: 14px;
+  color: #374151;
+  border-bottom: 1px solid #f0f1f3;
+  vertical-align: middle;
+}
+
+tbody tr:hover {
+  background: #fafafa;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.num {
+  text-align: center;
+}
+
+td.strong {
+  font-weight: 700;
+  color: #10233f;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.muted {
+  color: #9ca3af;
+}
+
+.warn {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.student {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+
+  strong {
+    color: #10233f;
+  }
+
+  span {
+    font-size: 12px;
+    color: #64748b;
+  }
+}
+
+.tag {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.muted-tag {
+  background: #f1f5f9;
+  color: #64748b !important;
+}
+
+// Estado de seguimiento por actividad
+.state {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.state-pendiente {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.state-entregada {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.state-no_entregada {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.state-calificada {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.loading,
+.empty-state {
+  padding: 48px 24px;
+  text-align: center;
+  color: #64748b;
+}
+
+.empty-state {
+  h3 {
+    margin: 0 0 6px;
+    color: #334155;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+
+  &.error {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+}
+
+@media (max-width: 1000px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .follow-up-page {
+    padding: 18px;
+  }
+
+  .page-header {
+    flex-direction: column;
+  }
+
+  .filters,
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}

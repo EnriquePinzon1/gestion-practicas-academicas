@@ -10,7 +10,7 @@
     </button>
   </div>
 
-  <div class="filters">
+  <div class="filters ui-enter">
     <input
       type="text"
       placeholder="Buscar por nombre, correo o documento"
@@ -26,6 +26,7 @@
       <option value="COORDINADOR">Coordinador</option>
       <option value="DOCENTE">Docente Asesor</option>
       <option value="ESTUDIANTE">Estudiante</option>
+      <option value="TUTOR_RECEPTOR">Tutor Receptor</option>
     </select>
 
     <select
@@ -43,7 +44,7 @@
   </div>
 
   @if (loading()) {
-    <div class="state-message">
+    <div class="state-message ui-loading">
       Cargando usuarios...
     </div>
   }
@@ -55,7 +56,7 @@
   }
 
   @if (!loading() && !errorMessage()) {
-    <div class="table-wrapper">
+    <div class="table-wrapper ui-enter ui-delay-1">
       <table>
         <thead>
           <tr>

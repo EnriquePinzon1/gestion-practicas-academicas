@@ -2,10 +2,16 @@
   <div class="header">
     <div>
       <h1>Gestión de Prácticas Académicas</h1>
-      <p>Registro, consulta y administración de prácticas.</p>
+
+      <p>
+        Administra el catálogo curricular de prácticas académicas.
+      </p>
     </div>
 
-    <button class="primary" (click)="newPractice()">
+    <button
+      class="primary"
+      (click)="newPractice()"
+    >
       Nueva práctica
     </button>
   </div>
@@ -28,45 +34,43 @@
       [ngModel]="programFilter()"
       (ngModelChange)="programFilter.set($event)"
     >
-      <option value="">Todos los programas</option>
+      <option value="">
+        Todos los programas
+      </option>
 
-      @for (programa of programas(); track programa.id_programa) {
-        <option [value]="programa.id_programa">
+      @for (
+        programa of programas();
+        track programa.id_programa
+      ) {
+        <option
+          [value]="programa.id_programa"
+        >
           {{ programa.nombre }}
         </option>
       }
     </select>
 
     <select
-      [ngModel]="institutionFilter()"
-      (ngModelChange)="institutionFilter.set($event)"
-    >
-      <option value="">Todas las instituciones</option>
-
-      @for (institucion of instituciones(); track institucion.id_institucion) {
-        <option [value]="institucion.id_institucion">
-          {{ institucion.nombre }}
-        </option>
-      }
-    </select>
-
-    <input
-      type="text"
-      placeholder="Periodo académico"
-      [ngModel]="periodFilter()"
-      (ngModelChange)="periodFilter.set($event)"
-    />
-
-    <select
       [ngModel]="statusFilter()"
       (ngModelChange)="statusFilter.set($event)"
     >
-      <option value="">Todos los estados</option>
-      <option value="ACTIVA">Activa</option>
-      <option value="CERRADA">Cerrada</option>
+      <option value="">
+        Todos los estados
+      </option>
+
+      <option value="ACTIVA">
+        Activa
+      </option>
+
+      <option value="CERRADA">
+        Cerrada
+      </option>
     </select>
 
-    <button class="secondary" (click)="clearFilters()">
+    <button
+      class="secondary"
+      (click)="clearFilters()"
+    >
       Limpiar filtros
     </button>
   </div>
@@ -80,8 +84,6 @@
           <tr>
             <th>Práctica</th>
             <th>Programa</th>
-            <th>Institución</th>
-            <th>Periodo</th>
             <th>Horas</th>
             <th>Estado</th>
             <th>Acciones</th>
@@ -89,32 +91,51 @@
         </thead>
 
         <tbody>
-          @for (practica of filteredPractices(); track practica.id_practica) {
+          @for (
+            practica of filteredPractices();
+            track practica.id_practica
+          ) {
             <tr>
-              <td>{{ practica.nombre }}</td>
-              <td>{{ practica.programa }}</td>
-              <td>{{ practica.institucion }}</td>
-              <td>{{ practica.periodo_academico }}</td>
-              <td>{{ practica.horas_requeridas }}</td>
+              <td>
+                {{ practica.nombre }}
+              </td>
+
+              <td>
+                {{ practica.programa }}
+              </td>
+
+              <td>
+                {{ practica.horas_requeridas }}
+              </td>
+
               <td>
                 <span
                   class="status"
-                  [class.closed]="practica.estado === 'CERRADA'"
+                  [class.closed]="
+                    practica.estado ===
+                    'CERRADA'
+                  "
                 >
                   {{ practica.estado }}
                 </span>
               </td>
 
               <td class="actions">
-                <button (click)="viewPractice(practica)">
+                <button
+                  (click)="viewPractice(practica)"
+                >
                   Ver
                 </button>
 
-                <button (click)="editPractice(practica)">
+                <button
+                  (click)="editPractice(practica)"
+                >
                   Editar
                 </button>
 
-                @if (practica.estado === 'ACTIVA') {
+                @if (
+                  practica.estado === 'ACTIVA'
+                ) {
                   <button
                     class="danger"
                     (click)="closePractice(practica)"
@@ -126,7 +147,7 @@
             </tr>
           } @empty {
             <tr>
-              <td colspan="7">
+              <td colspan="5">
                 No se encontraron prácticas.
               </td>
             </tr>

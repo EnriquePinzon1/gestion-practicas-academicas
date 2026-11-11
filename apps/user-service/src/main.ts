@@ -140,6 +140,7 @@ app.post('/api/users', async (req, res) => {
     codigo_estudiante,
     semestre,
     id_programa,
+    cargo,
   } = req.body;
 
   // ------------------------------------------------------
@@ -163,6 +164,7 @@ app.post('/api/users', async (req, res) => {
     'COORDINADOR',
     'DOCENTE',
     'ESTUDIANTE',
+    'TUTOR_RECEPTOR',
   ];
 
   if (!rolesPermitidos.includes(rol)) {
@@ -186,6 +188,21 @@ app.post('/api/users', async (req, res) => {
     return res.status(400).json({
       message:
         'Para un estudiante son obligatorios código, semestre y programa académico',
+    });
+  }
+
+  // Cargo del tutor receptor: opcional, máximo 120
+  // caracteres (users.tutor_receptor.cargo VARCHAR(120)).
+  if (
+    rol === 'TUTOR_RECEPTOR' &&
+    cargo !== undefined &&
+    cargo !== null &&
+    (typeof cargo !== 'string' ||
+      cargo.trim().length > 120)
+  ) {
+    return res.status(400).json({
+      message:
+        'El cargo del tutor receptor no puede superar 120 caracteres',
     });
   }
 
@@ -305,6 +322,12 @@ if (rol === 'ESTUDIANTE') {
     } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       correo.trim().toLowerCase(),
       {
+        // El enlace de invitación debe abrir la página
+        // donde el usuario define su contraseña.
+        redirectTo:
+          (process.env.WEB_APP_URL ??
+            'http://localhost:4200') +
+          '/reset-password',
         data: {
           nombres: nombres.trim(),
           apellidos: apellidos.trim(),
@@ -396,6 +419,22 @@ if (rol === 'ESTUDIANTE') {
           codigo_estudiante.trim(),
           Number(semestre),
           Number(id_programa),
+        ]
+      );
+    }
+
+    if (rol === 'TUTOR_RECEPTOR') {
+      await client.query(
+        `
+        INSERT INTO users.tutor_receptor (
+          id_usuario,
+          cargo
+        )
+        VALUES ($1, $2);
+        `,
+        [
+          idUsuario,
+          cargo?.trim() || null,
         ]
       );
     }
@@ -529,7 +568,10 @@ app.get('/api/users/:id', async (req, res) => {
 
         e.codigo_estudiante,
         e.semestre,
-        e.id_programa
+        e.id_programa,
+
+        t.id_tutor,
+        t.cargo
 
       FROM users.usuario u
 
@@ -538,6 +580,9 @@ app.get('/api/users/:id', async (req, res) => {
 
       LEFT JOIN users.estudiante e
         ON e.id_usuario = u.id_usuario
+
+      LEFT JOIN users.tutor_receptor t
+        ON t.id_usuario = u.id_usuario
 
       WHERE u.id_usuario = $1;
       `,
@@ -575,6 +620,7 @@ app.patch('/api/users/:id', async (req, res) => {
     telefono,
     semestre,
     id_programa,
+    cargo,
   } = req.body;
 
   if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
@@ -677,6 +723,19 @@ app.patch('/api/users/:id', async (req, res) => {
       }
     }
 
+    if (
+      rol === 'TUTOR_RECEPTOR' &&
+      cargo !== undefined &&
+      cargo !== null &&
+      (typeof cargo !== 'string' ||
+        cargo.trim().length > 120)
+    ) {
+      return res.status(400).json({
+        message:
+          'El cargo del tutor receptor no puede superar 120 caracteres',
+      });
+    }
+
     // ----------------------------------------------------
     // Transacción
     // ----------------------------------------------------
@@ -747,6 +806,43 @@ app.patch('/api/users/:id', async (req, res) => {
       studentData = studentResult.rows[0];
     }
 
+    // ----------------------------------------------------
+    // Actualizar cargo del tutor receptor
+    // ----------------------------------------------------
+
+    let tutorData = null;
+
+    if (rol === 'TUTOR_RECEPTOR') {
+      const tutorResult = await client.query(
+        `
+        UPDATE users.tutor_receptor
+        SET cargo = $1
+        WHERE id_usuario = $2
+        RETURNING
+          id_tutor,
+          cargo;
+        `,
+        [
+          typeof cargo === 'string'
+            ? cargo.trim() || null
+            : null,
+          idUsuario,
+        ]
+      );
+
+      if (tutorResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(409).json({
+          message:
+            'El usuario no tiene un perfil de tutor receptor asociado',
+        });
+      }
+
+      tutorData = tutorResult.rows[0];
+    }
+
     await client.query('COMMIT');
     transactionStarted = false;
 
@@ -756,6 +852,7 @@ app.patch('/api/users/:id', async (req, res) => {
         ...userResult.rows[0],
         rol,
         ...(studentData ?? {}),
+        ...(tutorData ?? {}),
       },
     });
   } catch (error) {
@@ -852,6 +949,314 @@ app.get('/api/internal/students/available', async (_req, res) => {
     return res.status(500).json({
       message:
         'No fue posible consultar los estudiantes disponibles',
+    });
+  }
+});
+
+// ======================================================
+// DATOS INTERNOS PARA ASIGNACIONES DE PRÁCTICA
+// ======================================================
+
+// Tutores receptores activos
+app.get('/api/internal/tutors/available', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        t.id_tutor,
+        u.id_usuario,
+        u.nombres,
+        u.apellidos,
+        u.numero_documento,
+        u.correo,
+        t.cargo
+      FROM users.tutor_receptor t
+
+      INNER JOIN users.usuario u
+        ON u.id_usuario = t.id_usuario
+
+      INNER JOIN users.rol r
+        ON r.id_rol = u.id_rol
+
+      WHERE
+        r.nombre = 'TUTOR_RECEPTOR'
+        AND u.estado = 'ACTIVO'
+
+      ORDER BY
+        u.nombres,
+        u.apellidos
+    `);
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando tutores receptores disponibles:',
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar los tutores receptores disponibles',
+    });
+  }
+});
+
+
+// ======================================================
+// CU04 - DOCENTE POR AUTH USER
+// ======================================================
+
+app.get(
+  '/api/internal/teachers/by-auth/:authUserId',
+  async (req, res) => {
+    const authUserId = req.params.authUserId;
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            d.id_docente,
+            u.id_usuario,
+            u.auth_user_id,
+            u.nombres,
+            u.apellidos,
+            u.correo,
+            u.estado,
+            r.nombre AS rol
+          FROM users.docente_asesor d
+          INNER JOIN users.usuario u
+            ON u.id_usuario = d.id_usuario
+          INNER JOIN users.rol r
+            ON r.id_rol = u.id_rol
+          WHERE u.auth_user_id = $1
+          LIMIT 1
+        `,
+        [authUserId]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Docente Asesor no encontrado',
+        });
+      }
+
+      const docente = result.rows[0];
+
+      if (docente.estado !== 'ACTIVO') {
+        return res.status(403).json({
+          message: 'El Docente Asesor se encuentra inactivo',
+        });
+      }
+
+      return res.json({
+        data: docente,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando docente por auth:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el Docente Asesor',
+      });
+    }
+  }
+);
+
+// ======================================================
+// ESTUDIANTE AUTENTICADO
+// Usado por API Gateway para validar el rol ESTUDIANTE
+// ======================================================
+
+app.get(
+  '/api/internal/students/by-auth/:authUserId',
+  async (req, res) => {
+    const authUserId = String(
+      req.params.authUserId ?? ''
+    ).trim();
+
+    if (!authUserId) {
+      return res.status(400).json({
+        message:
+          'El identificador de autenticación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            e.id_estudiante,
+            e.id_usuario,
+            e.codigo_estudiante,
+            e.semestre,
+            e.id_programa,
+            u.auth_user_id,
+            u.nombres,
+            u.apellidos,
+            u.correo,
+            u.estado,
+            r.nombre AS rol
+          FROM users.estudiante e
+          INNER JOIN users.usuario u
+            ON u.id_usuario = e.id_usuario
+          INNER JOIN users.rol r
+            ON r.id_rol = u.id_rol
+          WHERE u.auth_user_id = $1
+          LIMIT 1
+        `,
+        [authUserId]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Estudiante no encontrado',
+        });
+      }
+
+      return res.json({
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando estudiante por auth:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el estudiante',
+      });
+    }
+  }
+);
+
+// ======================================================
+// TUTOR RECEPTOR AUTENTICADO
+// Usado por API Gateway para validar el rol TUTOR_RECEPTOR
+// ======================================================
+
+app.get(
+  '/api/internal/tutors/by-auth/:authUserId',
+  async (req, res) => {
+    const authUserId = String(
+      req.params.authUserId ?? ''
+    ).trim();
+
+    if (!authUserId) {
+      return res.status(400).json({
+        message:
+          'El identificador de autenticación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            t.id_tutor,
+            t.id_usuario,
+            t.cargo,
+            u.auth_user_id,
+            u.nombres,
+            u.apellidos,
+            u.correo,
+            u.estado,
+            r.nombre AS rol
+          FROM users.tutor_receptor t
+          INNER JOIN users.usuario u
+            ON u.id_usuario = t.id_usuario
+          INNER JOIN users.rol r
+            ON r.id_rol = u.id_rol
+          WHERE u.auth_user_id = $1
+          LIMIT 1
+        `,
+        [authUserId]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Tutor receptor no encontrado',
+        });
+      }
+
+      return res.json({
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando tutor por auth:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el tutor receptor',
+      });
+    }
+  }
+);
+
+// ======================================================
+// ESTUDIANTES POR IDENTIFICADORES
+// Incluye inactivos: el historial de seguimiento debe
+// mostrar a quien participó aunque hoy esté inactivo.
+// Uso: ?ids=1,2,3 (máx. 500)
+// ======================================================
+
+app.get('/api/internal/students/by-ids', async (req, res) => {
+  const ids = String(req.query.ids ?? '')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) {
+    return res.json({ data: [] });
+  }
+
+  if (uniqueIds.length > 500) {
+    return res.status(400).json({
+      message: 'Se pueden consultar máximo 500 estudiantes',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          e.id_estudiante,
+          u.nombres,
+          u.apellidos,
+          u.correo,
+          u.estado,
+          e.codigo_estudiante,
+          e.semestre,
+          e.id_programa
+        FROM users.estudiante e
+        INNER JOIN users.usuario u
+          ON u.id_usuario = e.id_usuario
+        WHERE e.id_estudiante = ANY($1::int[])
+        ORDER BY u.nombres, u.apellidos
+      `,
+      [uniqueIds]
+    );
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando estudiantes por identificadores:',
+      error
+    );
+
+    return res.status(500).json({
+      message: 'No fue posible consultar los estudiantes',
     });
   }
 });

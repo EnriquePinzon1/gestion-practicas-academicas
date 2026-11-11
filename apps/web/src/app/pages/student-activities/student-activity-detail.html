@@ -1,0 +1,177 @@
+<div class="page">
+  @if (loading() && !actividad()) {
+    <p class="box">Cargando actividad...</p>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert success">
+      {{ successMessage() }}
+    </div>
+  }
+
+  @if (actividad(); as a) {
+    <div class="card">
+      <div class="header">
+        <div>
+          <span class="eyebrow">
+            Fecha límite: {{ fechaLimite() }}
+          </span>
+
+          <h1>{{ a.titulo }}</h1>
+
+          @if (estado(); as e) {
+            <span
+              class="status"
+              [ngClass]="e.toLowerCase()"
+            >
+              {{ etiquetas[e] }}
+            </span>
+          }
+        </div>
+
+        <button
+          class="secondary"
+          (click)="back()"
+        >
+          Volver
+        </button>
+      </div>
+
+      <p class="description">{{ a.descripcion }}</p>
+
+      @if (a.calificacion !== null) {
+        <section class="feedback">
+          <div class="feedback-head">
+            <h2>Retroalimentación del Docente Asesor</h2>
+            <span class="grade">{{ a.calificacion.toFixed(1) }} / 5.0</span>
+          </div>
+
+          @if (a.comentario_docente) {
+            <p class="feedback-comment">{{ a.comentario_docente }}</p>
+          }
+
+          <small>
+            Calificada el {{ a.calificado_en | date: 'dd/MM/yyyy, HH:mm' }}
+          </small>
+        </section>
+      } @else if (a.id_entrega && !a.puede_entregar) {
+        <div class="note">
+          Tu entrega está pendiente de calificación por el Docente Asesor.
+        </div>
+      }
+
+      @if (a.entregado_en) {
+        <div class="note ok">
+          Entregada el {{ a.entregado_en | date: 'dd/MM/yyyy, HH:mm' }}
+          @if (a.entrega_actualizada_en !== a.entregado_en) {
+            · Última corrección
+            {{ a.entrega_actualizada_en | date: 'dd/MM/yyyy, HH:mm' }}
+          }
+        </div>
+      }
+
+      @if (!a.puede_entregar) {
+        <div class="note">
+          @if (a.estado_actividad === 'CERRADA') {
+            El Docente Asesor cerró esta actividad; ya no recibe entregas.
+          } @else {
+            La fecha límite ya pasó; la actividad no recibe entregas.
+          }
+        </div>
+      } @else if (a.entregado_en) {
+        <div class="note">
+          Puedes corregir tus respuestas hasta la fecha límite.
+        </div>
+      }
+
+      <form (ngSubmit)="submit()">
+        @for (p of a.preguntas; track p.id_pregunta) {
+          <label class="question">
+            <span class="q-title">
+              {{ p.orden }}. {{ p.enunciado }}
+            </span>
+
+            @if (a.puede_entregar) {
+              <textarea
+                rows="5"
+                [name]="'respuesta-' + p.id_pregunta"
+                [maxlength]="maxRespuesta"
+                [readonly]="saving()"
+                placeholder="Escribe tu respuesta"
+                [(ngModel)]="respuestas[p.id_pregunta]"
+              ></textarea>
+
+              <small class="counter">
+                {{ (respuestas[p.id_pregunta] || '').length }} / {{ maxRespuesta }}
+              </small>
+            } @else {
+              <p class="answer" [class.empty]="!p.respuesta">
+                {{ p.respuesta || 'Sin respuesta' }}
+              </p>
+            }
+          </label>
+        }
+
+        @if (a.puede_entregar) {
+          <div class="actions">
+            <button
+              type="submit"
+              class="primary"
+              [disabled]="saving()"
+            >
+              @if (saving()) {
+                Enviando...
+              } @else if (a.entregado_en) {
+                Guardar cambios
+              } @else {
+                Entregar actividad
+              }
+            </button>
+          </div>
+        }
+      </form>
+
+      <section class="evidences">
+        <div class="ev-head">
+          <h2>Evidencias</h2>
+          <small>{{ a.evidencias.length }} / {{ maxEvidencias }}</small>
+        </div>
+
+        @if (a.puede_entregar && !a.id_entrega) {
+          <div class="note">
+            Registra tus respuestas para poder adjuntar evidencias.
+          </div>
+        } @else {
+          <app-evidence-list
+            [evidencias]="a.evidencias"
+            [canRemove]="a.puede_entregar"
+            [busyId]="busyEvidence()"
+            (download)="downloadEvidence($event)"
+            (remove)="removeEvidence($event)"
+          />
+        }
+
+        @if (canAddEvidence()) {
+          <label class="upload" [class.disabled]="uploading()">
+            <input
+              type="file"
+              [accept]="evidenceAccept"
+              [disabled]="uploading() || saving()"
+              (change)="uploadEvidence($event)"
+            />
+            {{ uploading() ? 'Subiendo archivo...' : 'Adjuntar archivo' }}
+          </label>
+          <small class="hint">
+            {{ evidenceFormats }}. Máximo 10 MB por archivo.
+          </small>
+        }
+      </section>
+    </div>
+  }
+</div>

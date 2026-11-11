@@ -1,6 +1,37 @@
-import { Component, computed, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  signal,
+} from '@angular/core';
+
 import { Router } from '@angular/router';
-import { ApiService } from '../../core/services/api.service';
+
+import { ApiService } from
+  '../../core/services/api.service';
+
+import {
+  ActividadEstudiante,
+  estadoVisible,
+  formatearFechaLimite,
+} from '../student-activities/student-activity.model';
+
+import {
+  TutorAssignment,
+  isCurrentAssignment,
+} from '../tutor/tutor.model';
+
+import { studentName } from '../follow-up/follow-up.model';
+
+interface AuthProfile {
+  authenticated: boolean;
+  auth_user_id: string;
+  id_usuario: number;
+  nombres: string;
+  apellidos: string;
+  correo: string;
+  estado: string;
+  rol: string;
+}
 
 interface Usuario {
   id_usuario: number;
@@ -8,15 +39,13 @@ interface Usuario {
   apellidos: string;
   estado: string;
   rol: string;
-  correo: string,
+  correo: string;
 }
 
 interface Practica {
   id_practica: number;
   nombre: string;
   programa: string;
-  institucion: string;
-  periodo_academico: string;
   estado: string;
 }
 
@@ -26,6 +55,20 @@ interface Grupo {
   practica: string;
   estado: string;
   total_estudiantes: number;
+
+  semestre?: number;
+  periodo_academico?: string;
+}
+
+interface Actividad {
+  id_actividad: number;
+  id_grupo: number;
+  titulo: string;
+  descripcion?: string;
+  fecha_limite: string;
+  hora_limite: string;
+  estado: string;
+  total_preguntas?: number;
 }
 
 @Component({
@@ -36,14 +79,91 @@ interface Grupo {
   styleUrl: './dashboard.scss',
 })
 export class Dashboard {
+
+  role = signal<string | null>(null);
+
+  profileName = signal('');
+  profileInitial = signal('');
+
   usuarios = signal<Usuario[]>([]);
   practicas = signal<Practica[]>([]);
   grupos = signal<Grupo[]>([]);
+  actividades = signal<Actividad[]>([]);
+  actividadesEstudiante = signal<ActividadEstudiante[]>([]);
+  asignacionesTutor = signal<TutorAssignment[]>([]);
+
+  readonly nombreEstudiante = studentName;
+
+  readonly fechaLimite = formatearFechaLimite;
 
   loading = signal(false);
   errorMessage = signal('');
-  coordinatorName = signal('Coordinador');
-  coordinatorInitial = signal('C');
+
+  isCoordinator = computed(
+    () => this.role() === 'COORDINADOR'
+  );
+
+  isTeacher = computed(
+    () => this.role() === 'DOCENTE'
+  );
+
+  isStudent = computed(
+    () => this.role() === 'ESTUDIANTE'
+  );
+
+  isTutor = computed(
+    () => this.role() === 'TUTOR_RECEPTOR'
+  );
+
+  // ==========================================
+  // MÉTRICAS TUTOR RECEPTOR
+  // ==========================================
+
+  practicantesVigentes = computed(() =>
+    this.asignacionesTutor().filter(isCurrentAssignment)
+  );
+
+  practicantesEnCurso = computed(
+    () =>
+      this.asignacionesTutor().filter(
+        (a) => a.estado === 'EN_CURSO'
+      ).length
+  );
+
+  practicantesSinGrupo = computed(
+    () =>
+      this.practicantesVigentes().filter(
+        (a) => a.id_grupo === null
+      ).length
+  );
+
+  // ==========================================
+  // MÉTRICAS ESTUDIANTE
+  // ==========================================
+
+  pendientesEstudiante = computed(() =>
+    this.actividadesEstudiante().filter(
+      (a) => estadoVisible(a) === 'PENDIENTE'
+    )
+  );
+
+  entregadasEstudiante = computed(
+    () =>
+      this.actividadesEstudiante().filter(
+        (a) => estadoVisible(a) === 'ENTREGADA'
+      ).length
+  );
+
+  noEntregadasEstudiante = computed(
+    () =>
+      this.actividadesEstudiante().filter(
+        (a) => estadoVisible(a) === 'NO_ENTREGADA'
+      ).length
+  );
+
+  // ==========================================
+  // MÉTRICAS COORDINADOR
+  // ==========================================
 
   totalEstudiantes = computed(
     () =>
@@ -80,11 +200,61 @@ export class Dashboard {
   );
 
   practicasRecientes = computed(
-    () => this.practicas().slice(0, 5)
+    () =>
+      this.practicas().slice(0, 5)
   );
 
   gruposRecientes = computed(
-    () => this.grupos().slice(0, 5)
+    () =>
+      this.grupos().slice(0, 5)
+  );
+
+  // ==========================================
+  // MÉTRICAS DOCENTE
+  // ==========================================
+
+  gruposActivosDocente = computed(
+    () =>
+      this.grupos().filter(
+        (grupo) =>
+          grupo.estado === 'ACTIVO'
+      ).length
+  );
+
+  estudiantesAsignados = computed(
+    () =>
+      this.grupos()
+        .filter(
+          (grupo) =>
+            grupo.estado === 'ACTIVO'
+        )
+        .reduce(
+          (total, grupo) =>
+            total +
+            grupo.total_estudiantes,
+          0
+        )
+  );
+
+  actividadesAbiertas = computed(
+    () =>
+      this.actividades().filter(
+        (actividad) =>
+          actividad.estado === 'ABIERTA'
+      ).length
+  );
+
+  actividadesCerradas = computed(
+    () =>
+      this.actividades().filter(
+        (actividad) =>
+          actividad.estado === 'CERRADA'
+      ).length
+  );
+
+  actividadesRecientes = computed(
+    () =>
+      this.actividades().slice(0, 5)
   );
 
   constructor(
@@ -95,93 +265,251 @@ export class Dashboard {
   }
 
   async loadDashboard() {
-  this.loading.set(true);
-  this.errorMessage.set('');
 
-  try {
-    const [
-      usersResponse,
-      practicesResponse,
-      groupsResponse,
-      authResponse,
-    ] = await Promise.all([
-      this.api.get<{ data: Usuario[] }>('/users'),
+    this.loading.set(true);
+    this.errorMessage.set('');
 
-      this.api.get<{ data: Practica[] }>('/practices'),
+    try {
 
-      this.api.get<{ data: Grupo[] }>('/groups'),
+      // Primero identificamos al usuario.
+      const profile =
+        await this.api.get<AuthProfile>(
+          '/auth/me'
+        );
 
-      this.api.get<{
-        authenticated: boolean;
-        id: string;
-        email: string;
-      }>('/auth/me'),
-    ]);
+      this.role.set(profile.rol);
 
-    this.usuarios.set(usersResponse.data);
-    this.practicas.set(practicesResponse.data);
-    this.grupos.set(groupsResponse.data);
+      this.profileName.set(
+        `${profile.nombres} ${profile.apellidos}`
+      );
 
-    const coordinator = usersResponse.data.find(
-  (usuario) =>
-    usuario.correo.toLowerCase() ===
-    authResponse.email.toLowerCase()
-);
+      this.profileInitial.set(
+        profile.nombres
+          .charAt(0)
+          .toUpperCase()
+      );
 
-if (coordinator) {
-  const nombreCompleto =
-    coordinator.nombres +
-    ' ' +
-    coordinator.apellidos;
+      // ======================================
+      // COORDINADOR
+      // ======================================
 
-  this.coordinatorName.set(nombreCompleto);
+      if (
+        profile.rol === 'COORDINADOR'
+      ) {
 
-  this.coordinatorInitial.set(
-    coordinator.nombres
-      .charAt(0)
-      .toUpperCase()
-  );
-}
-  } catch (error) {
-    this.errorMessage.set(
-      error instanceof Error
-        ? error.message
-        : 'No fue posible cargar el panel principal.'
-    );
-  } finally {
-    this.loading.set(false);
+        const [
+          usersResponse,
+          practicesResponse,
+          groupsResponse,
+        ] = await Promise.all([
+
+          this.api.get<{
+            data: Usuario[];
+          }>('/users'),
+
+          this.api.get<{
+            data: Practica[];
+          }>('/practices'),
+
+          this.api.get<{
+            data: Grupo[];
+          }>('/groups'),
+
+        ]);
+
+        this.usuarios.set(
+          usersResponse.data
+        );
+
+        this.practicas.set(
+          practicesResponse.data
+        );
+
+        this.grupos.set(
+          groupsResponse.data
+        );
+
+        return;
+      }
+
+      // ======================================
+      // DOCENTE
+      // ======================================
+
+      if (
+        profile.rol === 'DOCENTE'
+      ) {
+
+        const [
+          groupsResponse,
+          activitiesResponse,
+        ] = await Promise.all([
+
+          this.api.get<{
+            data: Grupo[];
+          }>('/teacher/groups'),
+
+          this.api.get<{
+            data: Actividad[];
+          }>('/activities'),
+
+        ]);
+
+        this.grupos.set(
+          groupsResponse.data
+        );
+
+        this.actividades.set(
+          activitiesResponse.data
+        );
+
+        return;
+      }
+
+      // ======================================
+      // ESTUDIANTE
+      // ======================================
+
+      if (
+        profile.rol === 'ESTUDIANTE'
+      ) {
+
+        const activitiesResponse =
+          await this.api.get<{
+            data: ActividadEstudiante[];
+          }>('/student/activities');
+
+        this.actividadesEstudiante.set(
+          activitiesResponse.data
+        );
+
+        return;
+      }
+
+      // ======================================
+      // TUTOR RECEPTOR
+      // ======================================
+
+      if (
+        profile.rol === 'TUTOR_RECEPTOR'
+      ) {
+
+        const assignmentsResponse =
+          await this.api.get<{
+            data: TutorAssignment[];
+          }>('/tutor/assignments');
+
+        this.asignacionesTutor.set(
+          assignmentsResponse.data
+        );
+
+        return;
+      }
+
+      throw new Error(
+        'El rol del usuario no tiene un panel configurado.'
+      );
+
+    } catch (error) {
+
+      this.errorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible cargar el panel principal.'
+      );
+
+    } finally {
+
+      this.loading.set(false);
+
+    }
   }
-}
+
+  // ==========================================
+  // NAVEGACIÓN COORDINADOR
+  // ==========================================
 
   goToUsers() {
-    this.router.navigate(['/usuarios']);
+    this.router.navigate([
+      '/usuarios',
+    ]);
   }
 
   goToPractices() {
-    this.router.navigate(['/practicas']);
+    this.router.navigate([
+      '/practicas',
+    ]);
   }
 
   goToGroups() {
-    this.router.navigate(['/grupos']);
+    this.router.navigate([
+      '/grupos',
+    ]);
   }
 
   newUser() {
-    this.router.navigate(['/usuarios/nuevo']);
+    this.router.navigate([
+      '/usuarios/nuevo',
+    ]);
   }
 
   newPractice() {
-    this.router.navigate(['/practicas/nueva']);
+    this.router.navigate([
+      '/practicas/nueva',
+    ]);
   }
 
   newGroup() {
-    this.router.navigate(['/grupos/nuevo']);
+    this.router.navigate([
+      '/grupos/nuevo',
+    ]);
   }
 
   viewPractice(id: number) {
-    this.router.navigate(['/practicas', id]);
+    this.router.navigate([
+      '/practicas',
+      id,
+    ]);
+  }
+
+  // ==========================================
+  // NAVEGACIÓN ESTUDIANTE
+  // ==========================================
+
+  goToStudentActivities() {
+    this.router.navigate([
+      '/mis-actividades',
+    ]);
+  }
+
+  openStudentActivity(id: number) {
+    this.router.navigate([
+      '/mis-actividades',
+      id,
+    ]);
+  }
+
+  // ==========================================
+  // NAVEGACIÓN TUTOR RECEPTOR
+  // ==========================================
+
+  goToTutorAssignments() {
+    this.router.navigate([
+      '/practicantes',
+    ]);
+  }
+
+  openTutorAssignment(id: number) {
+    this.router.navigate([
+      '/practicantes',
+      id,
+    ]);
   }
 
   viewGroup(id: number) {
-    this.router.navigate(['/grupos', id]);
+    this.router.navigate([
+      '/grupos',
+      id,
+    ]);
   }
 }
