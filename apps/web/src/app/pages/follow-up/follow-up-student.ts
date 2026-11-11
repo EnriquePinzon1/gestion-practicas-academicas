@@ -1,16 +1,15 @@
 import { Component, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { ApiService } from
   '../../core/services/api.service';
 
 import {
-  FOLLOW_UP_LABELS,
-  FollowUpState,
   StudentFollowUp,
   studentName,
 } from './follow-up.model';
+
+import { FollowUpTimeline } from './follow-up-timeline';
 
 // Historial de seguimiento de un estudiante en un grupo:
 // todas las actividades que recibió (snapshot), con su
@@ -18,7 +17,7 @@ import {
 @Component({
   selector: 'app-follow-up-student',
   standalone: true,
-  imports: [DatePipe],
+  imports: [FollowUpTimeline],
   templateUrl: './follow-up-student.html',
   styleUrls: [
     './follow-up.scss',
@@ -93,19 +92,7 @@ export class FollowUpStudent {
     void this.router.navigate(['/actividades', idActividad]);
   }
 
-  stateLabel(state: FollowUpState): string {
-    return FOLLOW_UP_LABELS[state] ?? state;
-  }
-
   formatGrade(value: number | null): string {
     return value === null ? '—' : value.toFixed(1);
-  }
-
-  formatDate(value: string): string {
-    return value ? value.substring(0, 10) : '-';
-  }
-
-  formatTime(value: string): string {
-    return value ? value.substring(0, 5) : '-';
   }
 }

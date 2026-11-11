@@ -52,6 +52,14 @@
           </span>
         }
 
+        @if (
+          userRole() === 'TUTOR_RECEPTOR'
+        ) {
+          <span class="role-label">
+            Tutor Receptor
+          </span>
+        }
+
       </div>
 
       <nav class="navigation">
@@ -180,6 +188,23 @@
             </span>
 
             Mis actividades
+          </a>
+
+        }
+
+        @if (
+          userRole() === 'TUTOR_RECEPTOR'
+        ) {
+
+          <a
+            routerLink="/practicantes"
+            routerLinkActive="active"
+          >
+            <span class="nav-icon">
+              ♙
+            </span>
+
+            Mis practicantes
           </a>
 
         }

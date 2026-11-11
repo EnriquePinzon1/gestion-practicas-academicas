@@ -306,6 +306,69 @@ async function requireStudent(
   }
 }
 
+// ========================================================
+// MIDDLEWARE: TUTOR RECEPTOR ACTIVO
+// ========================================================
+
+async function requireTutor(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const authUser = res.locals.user;
+
+    if (!authUser?.id) {
+      return res.status(401).json({
+        message: 'Usuario no autenticado',
+      });
+    }
+
+    const response = await fetch(
+      `http://localhost:3334/api/internal/tutors/by-auth/${encodeURIComponent(authUser.id)}`
+    );
+
+    if (!response.ok) {
+      return res.status(403).json({
+        message: 'No tiene permisos de Tutor Receptor',
+      });
+    }
+
+    const body = (await response.json()) as {
+      data?: {
+        id_tutor: number;
+        estado: string;
+        rol: string;
+      };
+    };
+
+    const tutor = body.data;
+
+    if (!tutor || tutor.rol !== 'TUTOR_RECEPTOR') {
+      return res.status(403).json({
+        message: 'No tiene permisos de Tutor Receptor',
+      });
+    }
+
+    if (tutor.estado !== 'ACTIVO') {
+      return res.status(403).json({
+        message: 'El Tutor Receptor se encuentra inactivo',
+      });
+    }
+
+    res.locals.tutor = tutor;
+
+    next();
+  } catch (error) {
+    console.error('Error validating tutor:', error);
+
+    return res.status(503).json({
+      message:
+        'No fue posible validar los permisos del Tutor Receptor',
+    });
+  }
+}
+
 // Reenvía una petición a Activity Service conservando
 // el estado HTTP y el cuerpo de la respuesta.
 async function forwardToActivityService(
@@ -1960,6 +2023,116 @@ app.get(
       { method: 'GET' },
       'Error consultando historial del estudiante:'
     )
+);
+
+// ========================================================
+// TUTOR RECEPTOR - PRACTICANTES A CARGO
+// Solo asignaciones donde el tutor del token figura como
+// tutor. El seguimiento académico es de solo lectura.
+// ========================================================
+
+app.get(
+  '/api/tutor/assignments',
+  requireAuth,
+  requireTutor,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/internal/tutors/' +
+          res.locals.tutor.id_tutor +
+          '/assignments'
+      );
+
+      const data = await response.json();
+
+      return res.status(response.status).json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando asignaciones del tutor:',
+        error
+      );
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/tutor/assignments/:id',
+  requireAuth,
+  requireTutor,
+  async (req, res) => {
+    let assignment: any;
+
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/internal/tutors/' +
+          res.locals.tutor.id_tutor +
+          '/assignments/' +
+          encodeURIComponent(String(req.params.id))
+      );
+
+      const body: any = await response.json();
+
+      if (!response.ok) {
+        return res.status(response.status).json(body);
+      }
+
+      assignment = body.data;
+    } catch (error) {
+      console.error(
+        'Error consultando asignación del tutor:',
+        error
+      );
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+
+    // Sin grupo de seguimiento no hay actividades que
+    // mostrar; no es un error.
+    if (!assignment.id_grupo) {
+      return res.json({
+        data: { ...assignment, seguimiento: null },
+      });
+    }
+
+    try {
+      const response = await fetch(
+        'http://localhost:3336/api/internal/follow-up/groups/' +
+          assignment.id_grupo +
+          '/students/' +
+          assignment.id_estudiante
+      );
+
+      const body: any = await response.json();
+
+      if (!response.ok) {
+        throw new Error(body?.message ?? 'Error de seguimiento');
+      }
+
+      return res.json({
+        data: { ...assignment, seguimiento: body.data },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando seguimiento para el tutor:',
+        error
+      );
+
+      return res.json({
+        data: {
+          ...assignment,
+          seguimiento: null,
+          seguimiento_error:
+            'No fue posible consultar el seguimiento académico',
+        },
+      });
+    }
+  }
 );
 
 // ========================================================

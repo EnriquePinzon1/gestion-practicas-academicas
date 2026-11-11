@@ -2762,6 +2762,58 @@ app.get(
 );
 
 // ------------------------------------------------------
+// Seguimiento interno de un estudiante en un grupo.
+// Sin validación de docente: lo usa el Gateway después de
+// comprobar el permiso (p. ej. el tutor de la asignación).
+// Solo lectura y sin respuestas ni evidencias.
+// ------------------------------------------------------
+
+app.get(
+  '/api/internal/follow-up/groups/:idGrupo/students/:idEstudiante',
+  async (req, res) => {
+    const idGrupo = positiveInt(req.params.idGrupo);
+    const idEstudiante = positiveInt(req.params.idEstudiante);
+
+    if (!idGrupo || !idEstudiante) {
+      return res.status(400).json({
+        message: 'Grupo o estudiante no válido',
+      });
+    }
+
+    try {
+      const rows = await pool.query(
+        FOLLOW_UP_SELECT +
+          `
+            AND ae.id_estudiante = $2
+            ORDER BY
+              a.fecha_limite,
+              a.hora_limite,
+              a.id_actividad
+          `,
+        [idGrupo, idEstudiante]
+      );
+
+      return res.json({
+        data: {
+          resumen: summarizeFollowUp(rows.rows),
+          actividades: rows.rows,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando seguimiento interno:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el seguimiento del estudiante',
+      });
+    }
+  }
+);
+
+// ------------------------------------------------------
 // Errores de lectura del cuerpo (tamaño, JSON inválido)
 // ------------------------------------------------------
 

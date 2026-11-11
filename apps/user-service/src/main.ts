@@ -1135,6 +1135,72 @@ app.get(
 );
 
 // ======================================================
+// TUTOR RECEPTOR AUTENTICADO
+// Usado por API Gateway para validar el rol TUTOR_RECEPTOR
+// ======================================================
+
+app.get(
+  '/api/internal/tutors/by-auth/:authUserId',
+  async (req, res) => {
+    const authUserId = String(
+      req.params.authUserId ?? ''
+    ).trim();
+
+    if (!authUserId) {
+      return res.status(400).json({
+        message:
+          'El identificador de autenticación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            t.id_tutor,
+            t.id_usuario,
+            t.cargo,
+            u.auth_user_id,
+            u.nombres,
+            u.apellidos,
+            u.correo,
+            u.estado,
+            r.nombre AS rol
+          FROM users.tutor_receptor t
+          INNER JOIN users.usuario u
+            ON u.id_usuario = t.id_usuario
+          INNER JOIN users.rol r
+            ON r.id_rol = u.id_rol
+          WHERE u.auth_user_id = $1
+          LIMIT 1
+        `,
+        [authUserId]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Tutor receptor no encontrado',
+        });
+      }
+
+      return res.json({
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando tutor por auth:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el tutor receptor',
+      });
+    }
+  }
+);
+
+// ======================================================
 // ESTUDIANTES POR IDENTIFICADORES
 // Incluye inactivos: el historial de seguimiento debe
 // mostrar a quien participó aunque hoy esté inactivo.

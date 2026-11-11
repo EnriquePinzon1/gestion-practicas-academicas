@@ -71,74 +71,11 @@
           <p>El estudiante aún no ha recibido actividades en este grupo.</p>
         </div>
       } @else {
-        <ol class="timeline">
-          @for (item of h.actividades; track item.id_actividad_estudiante) {
-            <li class="timeline-item" [class]="'mark-' + item.estado_seguimiento.toLowerCase()">
-
-              <div class="item-header">
-                <div>
-                  <h3>{{ item.titulo }}</h3>
-                  <span class="meta">
-                    Fecha límite {{ formatDate(item.fecha_limite) }}
-                    {{ formatTime(item.hora_limite) }}
-                    · Actividad {{ item.estado_actividad === 'ABIERTA' ? 'abierta' : 'cerrada' }}
-                  </span>
-                </div>
-                <span class="state" [class]="'state state-' + item.estado_seguimiento.toLowerCase()">
-                  {{ stateLabel(item.estado_seguimiento) }}
-                </span>
-              </div>
-
-              <dl class="details">
-                <div>
-                  <dt>Asignada</dt>
-                  <dd>{{ item.asignado_en | date: 'dd/MM/yyyy, HH:mm' }}</dd>
-                </div>
-                <div>
-                  <dt>Entrega</dt>
-                  <dd>
-                    @if (item.entregado_en) {
-                      {{ item.entregado_en | date: 'dd/MM/yyyy, HH:mm' }}
-                      @if (item.entrega_actualizada_en && item.entrega_actualizada_en !== item.entregado_en) {
-                        <small>(corregida {{ item.entrega_actualizada_en | date: 'dd/MM/yyyy, HH:mm' }})</small>
-                      }
-                    } @else {
-                      <span class="muted">Sin entrega</span>
-                    }
-                  </dd>
-                </div>
-                <div>
-                  <dt>Evidencias</dt>
-                  <dd>{{ item.total_evidencias }}</dd>
-                </div>
-                <div>
-                  <dt>Calificación</dt>
-                  <dd class="grade">{{ formatGrade(item.calificacion) }}</dd>
-                </div>
-              </dl>
-
-              @if (item.comentario_docente) {
-                <blockquote class="comment">
-                  {{ item.comentario_docente }}
-                  @if (item.calificado_en) {
-                    <small>{{ item.calificado_en | date: 'dd/MM/yyyy, HH:mm' }}</small>
-                  }
-                </blockquote>
-              }
-
-              <div class="item-actions">
-                <button
-                  type="button"
-                  class="secondary-button"
-                  (click)="viewActivity(item.id_actividad)"
-                >
-                  Ver actividad y entregas
-                </button>
-              </div>
-
-            </li>
-          }
-        </ol>
+        <app-follow-up-timeline
+          [activities]="h.actividades"
+          [showActivityLink]="true"
+          (openActivity)="viewActivity($event)"
+        />
       }
 
     </section>

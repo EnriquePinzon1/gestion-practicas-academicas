@@ -2366,6 +2366,221 @@ app.get(
   }
 );
 
+// ======================================================
+// TUTOR RECEPTOR - ASIGNACIONES A CARGO
+//
+// El tutor ve las asignaciones donde figura como tutor.
+// Cada asignación se enlaza con el grupo de seguimiento
+// académico: misma práctica + mismo período y que tenga
+// al estudiante como integrante (si hay varios, el activo
+// más reciente).
+// ======================================================
+
+// $1 = id_tutor
+const TUTOR_ASSIGNMENT_SELECT = `
+  SELECT
+    a.id_asignacion,
+    a.id_estudiante,
+    a.id_practica,
+    p.nombre AS practica,
+    a.id_institucion,
+    i.nombre AS institucion,
+    a.periodo_academico,
+    a.estado,
+    a.fecha_inicio,
+    a.fecha_fin,
+    a.creado_en,
+    g.id_grupo,
+    g.nombre AS grupo,
+    g.estado AS estado_grupo,
+    g.id_docente
+  FROM practices.asignacion_practica a
+  INNER JOIN practices.practica p
+    ON p.id_practica = a.id_practica
+  INNER JOIN practices.institucion i
+    ON i.id_institucion = a.id_institucion
+  LEFT JOIN LATERAL (
+    SELECT
+      gr.id_grupo,
+      gr.nombre,
+      gr.estado,
+      gr.id_docente
+    FROM practices.grupo gr
+    INNER JOIN practices.grupo_estudiante ge
+      ON ge.id_grupo = gr.id_grupo
+     AND ge.id_estudiante = a.id_estudiante
+    WHERE gr.id_practica = a.id_practica
+      AND gr.periodo_academico = a.periodo_academico
+    ORDER BY
+      (gr.estado = 'ACTIVO') DESC,
+      gr.id_grupo DESC
+    LIMIT 1
+  ) g ON TRUE
+  WHERE a.id_tutor = $1
+`;
+
+// Agrega nombres de estudiante y docente asesor desde
+// User Service. Si no responde, se devuelven solo IDs.
+async function withTutorAssignmentNames(rows: any[]) {
+  const students = new Map<number, any>();
+  const teachers = new Map<number, any>();
+
+  const studentIds = [
+    ...new Set(rows.map((row) => Number(row.id_estudiante))),
+  ];
+
+  try {
+    const [studentsResponse, teachersResponse] =
+      await Promise.all([
+        studentIds.length
+          ? fetch(
+              'http://localhost:3334/api/internal/students/by-ids?ids=' +
+                studentIds.join(',')
+            )
+          : null,
+        fetch(
+          'http://localhost:3334/api/internal/teachers/available'
+        ),
+      ]);
+
+    if (studentsResponse?.ok) {
+      const body: any = await studentsResponse.json();
+
+      for (const s of body.data ?? []) {
+        students.set(Number(s.id_estudiante), s);
+      }
+    }
+
+    if (teachersResponse.ok) {
+      const body: any = await teachersResponse.json();
+
+      for (const t of body.data ?? []) {
+        teachers.set(Number(t.id_docente), t);
+      }
+    }
+  } catch (error) {
+    console.error(
+      'No fue posible consultar nombres para el tutor:',
+      error
+    );
+  }
+
+  return rows.map((row) => {
+    const student = students.get(Number(row.id_estudiante));
+    const teacher = row.id_docente
+      ? teachers.get(Number(row.id_docente))
+      : null;
+
+    return {
+      ...row,
+      estudiante: {
+        id_estudiante: row.id_estudiante,
+        nombres: student?.nombres ?? null,
+        apellidos: student?.apellidos ?? null,
+        correo: student?.correo ?? null,
+        codigo_estudiante: student?.codigo_estudiante ?? null,
+        semestre: student?.semestre ?? null,
+      },
+      docente: teacher
+        ? {
+            id_docente: teacher.id_docente,
+            nombres: teacher.nombres,
+            apellidos: teacher.apellidos,
+            correo: teacher.correo,
+          }
+        : null,
+    };
+  });
+}
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments',
+  async (req, res) => {
+    const idTutor = Number(req.params.idTutor);
+
+    if (!Number.isInteger(idTutor) || idTutor <= 0) {
+      return res.status(400).json({
+        message: 'El tutor no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        TUTOR_ASSIGNMENT_SELECT +
+          `
+            ORDER BY
+              (a.estado IN ('ASIGNADA', 'EN_CURSO')) DESC,
+              a.periodo_academico DESC,
+              a.id_asignacion DESC
+          `,
+        [idTutor]
+      );
+
+      return res.json({
+        data: await withTutorAssignmentNames(result.rows),
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando asignaciones del tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar las asignaciones del tutor',
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion',
+  async (req, res) => {
+    const idTutor = Number(req.params.idTutor);
+    const idAsignacion = Number(req.params.idAsignacion);
+
+    if (
+      !Number.isInteger(idTutor) ||
+      idTutor <= 0 ||
+      !Number.isInteger(idAsignacion) ||
+      idAsignacion <= 0
+    ) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        TUTOR_ASSIGNMENT_SELECT + ' AND a.id_asignacion = $2',
+        [idTutor, idAsignacion]
+      );
+
+      // Asignación inexistente o de otro tutor: 404
+      // para no revelar asignaciones ajenas.
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      const [data] = await withTutorAssignmentNames(result.rows);
+
+      return res.json({ data });
+    } catch (error) {
+      console.error(
+        'Error consultando asignación del tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar la asignación',
+      });
+    }
+  }
+);
+
 const port = process.env.PORT || 3335;
 
 const server = app.listen(port, () => {

@@ -54,6 +54,12 @@ import { FollowUp } from
 import { FollowUpStudent } from
   './pages/follow-up/follow-up-student';
 
+import { TutorAssignments } from
+  './pages/tutor/tutor-assignments';
+
+import { TutorAssignmentDetail } from
+  './pages/tutor/tutor-assignment-detail';
+
 export const appRoutes: Route[] = [
 
   // ==========================================
@@ -243,6 +249,22 @@ export const appRoutes: Route[] = [
   {
     path: 'seguimiento/:idGrupo/estudiantes/:idEstudiante',
     component: FollowUpStudent,
+    canActivate: [authGuard],
+  },
+
+  // ==========================================
+  // TUTOR RECEPTOR - PRACTICANTES A CARGO
+  // ==========================================
+
+  {
+    path: 'practicantes',
+    component: TutorAssignments,
+    canActivate: [authGuard],
+  },
+
+  {
+    path: 'practicantes/:id',
+    component: TutorAssignmentDetail,
     canActivate: [authGuard],
   },
 

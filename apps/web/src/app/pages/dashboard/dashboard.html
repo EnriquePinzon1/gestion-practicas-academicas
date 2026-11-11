@@ -33,6 +33,13 @@
         </p>
       }
 
+      @if (isTutor()) {
+        <p>
+          Practicantes a tu cargo y su
+          seguimiento académico.
+        </p>
+      }
+
     </div>
 
     <div class="coordinator-badge">
@@ -62,6 +69,12 @@
         @if (isStudent()) {
           <small>
             Estudiante
+          </small>
+        }
+
+        @if (isTutor()) {
+          <small>
+            Tutor Receptor
           </small>
         }
 
@@ -803,6 +816,137 @@
 
               <div class="empty">
                 No tienes actividades pendientes.
+              </div>
+
+            }
+
+          </div>
+
+        </article>
+
+      </section>
+
+    }
+
+
+    <!-- ================================= -->
+    <!-- DASHBOARD TUTOR RECEPTOR          -->
+    <!-- ================================= -->
+
+    @if (isTutor()) {
+
+      <section class="metrics">
+
+        <div
+          class="metric-card"
+          (click)="goToTutorAssignments()"
+        >
+          <div class="metric-icon practices">
+            ♙
+          </div>
+
+          <div>
+            <span>
+              Practicantes vigentes
+            </span>
+
+            <strong>
+              {{ practicantesVigentes().length }}
+            </strong>
+          </div>
+        </div>
+
+        <div
+          class="metric-card"
+          (click)="goToTutorAssignments()"
+        >
+          <div class="metric-icon teachers">
+            ▶
+          </div>
+
+          <div>
+            <span>
+              En curso
+            </span>
+
+            <strong>
+              {{ practicantesEnCurso() }}
+            </strong>
+          </div>
+        </div>
+
+        <div
+          class="metric-card"
+          (click)="goToTutorAssignments()"
+        >
+          <div class="metric-icon groups">
+            ⌛
+          </div>
+
+          <div>
+            <span>
+              Sin grupo de seguimiento
+            </span>
+
+            <strong>
+              {{ practicantesSinGrupo() }}
+            </strong>
+          </div>
+        </div>
+
+      </section>
+
+
+      <section class="dashboard-grid">
+
+        <article class="panel">
+
+          <div class="panel-header">
+            <div>
+              <h2>
+                Practicantes vigentes
+              </h2>
+
+              <p>
+                Asignadas o en curso
+              </p>
+            </div>
+          </div>
+
+          <div class="panel-list">
+
+            @for (
+              asignacion of practicantesVigentes();
+              track asignacion.id_asignacion
+            ) {
+
+              <div
+                class="list-item"
+                (click)="openTutorAssignment(asignacion.id_asignacion)"
+              >
+                <div>
+                  <strong>
+                    {{ nombreEstudiante(asignacion.estudiante) }}
+                  </strong>
+
+                  <span>
+                    {{ asignacion.practica }}
+                    ·
+                    {{ asignacion.institucion }}
+                    ·
+                    {{ asignacion.periodo_academico }}
+                  </span>
+                </div>
+
+                <span class="state">
+                  {{ asignacion.estado === 'EN_CURSO' ? 'EN CURSO' : asignacion.estado }}
+                </span>
+              </div>
+
+            } @empty {
+
+              <div class="empty">
+                No tienes practicantes vigentes.
               </div>
 
             }

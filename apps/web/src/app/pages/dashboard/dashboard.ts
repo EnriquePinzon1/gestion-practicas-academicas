@@ -15,6 +15,13 @@ import {
   formatearFechaLimite,
 } from '../student-activities/student-activity.model';
 
+import {
+  TutorAssignment,
+  isCurrentAssignment,
+} from '../tutor/tutor.model';
+
+import { studentName } from '../follow-up/follow-up.model';
+
 interface AuthProfile {
   authenticated: boolean;
   auth_user_id: string;
@@ -83,6 +90,9 @@ export class Dashboard {
   grupos = signal<Grupo[]>([]);
   actividades = signal<Actividad[]>([]);
   actividadesEstudiante = signal<ActividadEstudiante[]>([]);
+  asignacionesTutor = signal<TutorAssignment[]>([]);
+
+  readonly nombreEstudiante = studentName;
 
   readonly fechaLimite = formatearFechaLimite;
 
@@ -99,6 +109,32 @@ export class Dashboard {
 
   isStudent = computed(
     () => this.role() === 'ESTUDIANTE'
+  );
+
+  isTutor = computed(
+    () => this.role() === 'TUTOR_RECEPTOR'
+  );
+
+  // ==========================================
+  // MÉTRICAS TUTOR RECEPTOR
+  // ==========================================
+
+  practicantesVigentes = computed(() =>
+    this.asignacionesTutor().filter(isCurrentAssignment)
+  );
+
+  practicantesEnCurso = computed(
+    () =>
+      this.asignacionesTutor().filter(
+        (a) => a.estado === 'EN_CURSO'
+      ).length
+  );
+
+  practicantesSinGrupo = computed(
+    () =>
+      this.practicantesVigentes().filter(
+        (a) => a.id_grupo === null
+      ).length
   );
 
   // ==========================================
@@ -350,6 +386,26 @@ export class Dashboard {
         return;
       }
 
+      // ======================================
+      // TUTOR RECEPTOR
+      // ======================================
+
+      if (
+        profile.rol === 'TUTOR_RECEPTOR'
+      ) {
+
+        const assignmentsResponse =
+          await this.api.get<{
+            data: TutorAssignment[];
+          }>('/tutor/assignments');
+
+        this.asignacionesTutor.set(
+          assignmentsResponse.data
+        );
+
+        return;
+      }
+
       throw new Error(
         'El rol del usuario no tiene un panel configurado.'
       );
@@ -429,6 +485,23 @@ export class Dashboard {
   openStudentActivity(id: number) {
     this.router.navigate([
       '/mis-actividades',
+      id,
+    ]);
+  }
+
+  // ==========================================
+  // NAVEGACIÓN TUTOR RECEPTOR
+  // ==========================================
+
+  goToTutorAssignments() {
+    this.router.navigate([
+      '/practicantes',
+    ]);
+  }
+
+  openTutorAssignment(id: number) {
+    this.router.navigate([
+      '/practicantes',
       id,
     ]);
   }
