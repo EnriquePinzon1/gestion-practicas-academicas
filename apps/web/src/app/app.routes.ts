@@ -48,6 +48,12 @@ import { ActivityForm } from
 import { ActivityDetail } from
   './pages/activities/activity-detail';
 
+import { FollowUp } from
+  './pages/follow-up/follow-up';
+
+import { FollowUpStudent } from
+  './pages/follow-up/follow-up-student';
+
 export const appRoutes: Route[] = [
 
   // ==========================================
@@ -223,6 +229,22 @@ export const appRoutes: Route[] = [
   component: ActivityDetail,
   canActivate: [authGuard],
 },
+
+  // ==========================================
+  // DOCENTE - HISTORIAL DE SEGUIMIENTO
+  // ==========================================
+
+  {
+    path: 'seguimiento',
+    component: FollowUp,
+    canActivate: [authGuard],
+  },
+
+  {
+    path: 'seguimiento/:idGrupo/estudiantes/:idEstudiante',
+    component: FollowUpStudent,
+    canActivate: [authGuard],
+  },
 
   // ==========================================
   // ESTUDIANTE - ACTIVIDADES Y ENTREGAS

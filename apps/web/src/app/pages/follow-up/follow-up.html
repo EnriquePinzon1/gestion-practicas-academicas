@@ -1,0 +1,169 @@
+<section class="follow-up-page">
+
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Docente Asesor</span>
+      <h1>Seguimiento de estudiantes</h1>
+      <p>
+        Consulta el avance de cada estudiante en las
+        actividades de tu grupo: entregas, faltantes y
+        calificaciones.
+      </p>
+    </div>
+  </header>
+
+  @if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  }
+
+  <section class="filters">
+
+    <div class="field">
+      <label for="group">Grupo</label>
+      <select
+        id="group"
+        [ngModel]="selectedGroup()"
+        (ngModelChange)="selectGroup($event)"
+        [disabled]="loadingGroups() || groups().length === 0"
+      >
+        @for (group of groups(); track group.id_grupo) {
+          <option [ngValue]="group.id_grupo">
+            {{ group.nombre }} · {{ group.periodo_academico }}
+            · {{ group.estado }}
+          </option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="search">Buscar estudiante</label>
+      <input
+        id="search"
+        type="text"
+        placeholder="Nombre, código o correo..."
+        [ngModel]="searchTerm()"
+        (ngModelChange)="searchTerm.set($event)"
+      />
+    </div>
+
+  </section>
+
+  @if (loadingGroups()) {
+    <div class="panel loading">Cargando grupos...</div>
+  } @else if (groups().length === 0) {
+    <div class="panel empty-state">
+      <h3>No tienes grupos asignados</h3>
+      <p>Cuando el coordinador te asigne un grupo podrás hacer su seguimiento aquí.</p>
+    </div>
+  } @else if (loading()) {
+    <div class="panel loading">Cargando seguimiento...</div>
+  } @else if (followUp(); as data) {
+
+    <section class="summary-grid">
+      <article class="summary-card">
+        <span>Práctica</span>
+        <strong class="text">{{ data.grupo.practica }}</strong>
+      </article>
+      <article class="summary-card">
+        <span>Estudiantes</span>
+        <strong>{{ data.estudiantes.length }}</strong>
+      </article>
+      <article class="summary-card">
+        <span>Actividades ({{ data.actividades_abiertas }} abiertas)</span>
+        <strong>{{ data.total_actividades }}</strong>
+      </article>
+      <article class="summary-card">
+        <span>Promedio del grupo</span>
+        <strong>{{ formatGrade(data.promedio_grupo) }}</strong>
+      </article>
+    </section>
+
+    <section class="panel">
+
+      <div class="panel-heading">
+        <h2>Estudiantes</h2>
+        <p>
+          Las entregas incluyen las calificadas. "No entregadas"
+          son actividades cerradas o vencidas sin entrega.
+        </p>
+      </div>
+
+      @if (filteredStudents().length === 0) {
+        <div class="empty-state">
+          <h3>Sin estudiantes</h3>
+          <p>
+            @if (data.estudiantes.length === 0) {
+              El grupo aún no tiene estudiantes.
+            } @else {
+              Ningún estudiante coincide con la búsqueda.
+            }
+          </p>
+        </div>
+      } @else {
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Estudiante</th>
+                <th class="num">Entregadas</th>
+                <th class="num">Pendientes</th>
+                <th class="num">No entregadas</th>
+                <th class="num">Calificadas</th>
+                <th class="num">Promedio</th>
+                <th>Última entrega</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (student of filteredStudents(); track student.id_estudiante) {
+                <tr>
+                  <td>
+                    <div class="student">
+                      <strong>{{ studentName(student) }}</strong>
+                      <span>{{ student.codigo_estudiante ?? 'Sin código' }}</span>
+                      @if (!student.en_grupo) {
+                        <span class="tag muted-tag">Retirado del grupo</span>
+                      }
+                      @if (student.estado_usuario === 'INACTIVO') {
+                        <span class="tag muted-tag">Usuario inactivo</span>
+                      }
+                    </div>
+                  </td>
+                  <td class="num">
+                    {{ student.resumen.entregadas }} / {{ student.resumen.total }}
+                  </td>
+                  <td class="num">{{ student.resumen.pendientes }}</td>
+                  <td class="num">
+                    <span [class.warn]="student.resumen.no_entregadas > 0">
+                      {{ student.resumen.no_entregadas }}
+                    </span>
+                  </td>
+                  <td class="num">{{ student.resumen.calificadas }}</td>
+                  <td class="num strong">{{ formatGrade(student.resumen.promedio) }}</td>
+                  <td class="nowrap">
+                    @if (student.resumen.ultima_entrega) {
+                      {{ student.resumen.ultima_entrega | date: 'dd/MM/yyyy, HH:mm' }}
+                    } @else {
+                      <span class="muted">—</span>
+                    }
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      (click)="viewStudent(student.id_estudiante)"
+                    >
+                      Ver historial
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+    </section>
+  }
+
+</section>

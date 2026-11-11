@@ -1923,6 +1923,46 @@ app.put(
 );
 
 // ========================================================
+// HISTORIAL DE SEGUIMIENTO - DOCENTE ASESOR
+// Solo grupos del docente autenticado (validado en
+// Activity Service contra Practice Service).
+// ========================================================
+
+app.get(
+  '/api/teacher/follow-up/groups/:idGrupo',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/follow-up/groups/' +
+        encodeURIComponent(String(req.params.idGrupo)) +
+        '?teacherId=' +
+        res.locals.teacher.id_docente,
+      { method: 'GET' },
+      'Error consultando seguimiento del grupo:'
+    )
+);
+
+app.get(
+  '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/follow-up/groups/' +
+        encodeURIComponent(String(req.params.idGrupo)) +
+        '/students/' +
+        encodeURIComponent(String(req.params.idEstudiante)) +
+        '?teacherId=' +
+        res.locals.teacher.id_docente,
+      { method: 'GET' },
+      'Error consultando historial del estudiante:'
+    )
+);
+
+// ========================================================
 // ENTREGAS - ESTUDIANTE
 // El id del estudiante sale siempre del token, nunca del
 // cliente: solo puede ver y entregar sus actividades.

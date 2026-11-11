@@ -1134,6 +1134,67 @@ app.get(
   }
 );
 
+// ======================================================
+// ESTUDIANTES POR IDENTIFICADORES
+// Incluye inactivos: el historial de seguimiento debe
+// mostrar a quien participó aunque hoy esté inactivo.
+// Uso: ?ids=1,2,3 (máx. 500)
+// ======================================================
+
+app.get('/api/internal/students/by-ids', async (req, res) => {
+  const ids = String(req.query.ids ?? '')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) {
+    return res.json({ data: [] });
+  }
+
+  if (uniqueIds.length > 500) {
+    return res.status(400).json({
+      message: 'Se pueden consultar máximo 500 estudiantes',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          e.id_estudiante,
+          u.nombres,
+          u.apellidos,
+          u.correo,
+          u.estado,
+          e.codigo_estudiante,
+          e.semestre,
+          e.id_programa
+        FROM users.estudiante e
+        INNER JOIN users.usuario u
+          ON u.id_usuario = e.id_usuario
+        WHERE e.id_estudiante = ANY($1::int[])
+        ORDER BY u.nombres, u.apellidos
+      `,
+      [uniqueIds]
+    );
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando estudiantes por identificadores:',
+      error
+    );
+
+    return res.status(500).json({
+      message: 'No fue posible consultar los estudiantes',
+    });
+  }
+});
+
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {

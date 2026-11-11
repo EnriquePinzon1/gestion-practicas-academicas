@@ -2402,6 +2402,365 @@ app.get("/api/activities/:id/evidences/:idEvidencia/url", async (req, res) => {
   );
 });
 
+// ======================================================
+// HISTORIAL DE SEGUIMIENTO
+//
+// Se construye desde el snapshot actividad_estudiante:
+// cada estudiante conserva las actividades que recibió
+// aunque luego salga del grupo. Estado de seguimiento por
+// actividad (derivado, no almacenado):
+// - CALIFICADA:   entrega con retroalimentación.
+// - ENTREGADA:    entrega sin retroalimentación.
+// - NO_ENTREGADA: sin entrega y actividad cerrada o vencida.
+// - PENDIENTE:    sin entrega, abierta y en plazo.
+// ======================================================
+
+// $1 = id_grupo
+const FOLLOW_UP_SELECT = `
+  SELECT
+    ae.id_actividad_estudiante,
+    ae.id_estudiante,
+    ae.asignado_en,
+    a.id_actividad,
+    a.titulo,
+    a.fecha_limite,
+    a.hora_limite,
+    a.estado AS estado_actividad,
+    en.id_entrega,
+    en.entregado_en,
+    en.actualizado_en AS entrega_actualizada_en,
+    (
+      SELECT COUNT(*)::int
+      FROM activities.evidencia ev
+      WHERE ev.id_entrega = en.id_entrega
+    ) AS total_evidencias,
+    rt.calificacion::float AS calificacion,
+    rt.comentario AS comentario_docente,
+    rt.actualizado_en AS calificado_en,
+    CASE
+      WHEN rt.id_retroalimentacion IS NOT NULL
+        THEN 'CALIFICADA'
+      WHEN en.id_entrega IS NOT NULL
+        THEN 'ENTREGADA'
+      WHEN a.estado <> 'ABIERTA'
+        OR (
+          (a.fecha_limite + a.hora_limite)
+          AT TIME ZONE 'America/Bogota'
+        ) <= NOW()
+        THEN 'NO_ENTREGADA'
+      ELSE 'PENDIENTE'
+    END AS estado_seguimiento
+  FROM activities.actividad_estudiante ae
+  INNER JOIN activities.actividad a
+    ON a.id_actividad = ae.id_actividad
+  LEFT JOIN activities.entrega en
+    ON en.id_actividad_estudiante =
+       ae.id_actividad_estudiante
+  LEFT JOIN activities.retroalimentacion rt
+    ON rt.id_entrega = en.id_entrega
+  WHERE a.id_grupo = $1
+`;
+
+interface FollowUpSummary {
+  total: number;
+  pendientes: number;
+  entregadas: number;
+  no_entregadas: number;
+  calificadas: number;
+  promedio: number | null;
+  ultima_entrega: string | null;
+}
+
+// Resumen sobre las filas de seguimiento de un estudiante.
+// "entregadas" incluye las calificadas. El promedio solo
+// considera actividades calificadas.
+function summarizeFollowUp(rows: any[]): FollowUpSummary {
+  const count = (state: string) =>
+    rows.filter((row) => row.estado_seguimiento === state).length;
+
+  const grades = rows
+    .map((row) => row.calificacion)
+    .filter((value): value is number => value !== null);
+
+  const lastSubmission = rows
+    .map((row) => row.entrega_actualizada_en)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+
+  return {
+    total: rows.length,
+    pendientes: count('PENDIENTE'),
+    entregadas: count('ENTREGADA') + count('CALIFICADA'),
+    no_entregadas: count('NO_ENTREGADA'),
+    calificadas: grades.length,
+    promedio: grades.length
+      ? Math.round(
+          (grades.reduce((sum, value) => sum + value, 0) /
+            grades.length) *
+            10
+        ) / 10
+      : null,
+    ultima_entrega: lastSubmission ?? null,
+  };
+}
+
+// Valida que el grupo pertenezca al docente y lo devuelve.
+async function findTeacherGroup(
+  idDocente: number,
+  idGrupo: number
+): Promise<TeacherGroup | null> {
+  const groups = await getTeacherGroups(idDocente);
+
+  return (
+    groups.find((group) => Number(group.id_grupo) === idGrupo) ??
+    null
+  );
+}
+
+// Datos de identidad desde User Service (incluye inactivos).
+// Si no responde, el historial se devuelve sin nombres.
+async function getStudentsByIds(
+  ids: number[]
+): Promise<Map<number, any>> {
+  const students = new Map<number, any>();
+
+  if (ids.length === 0) {
+    return students;
+  }
+
+  try {
+    const response = await fetch(
+      'http://localhost:3334/api/internal/students/by-ids?ids=' +
+        ids.join(',')
+    );
+
+    if (response.ok) {
+      const body: any = await response.json();
+
+      for (const student of body.data ?? []) {
+        students.set(Number(student.id_estudiante), student);
+      }
+    }
+  } catch (error) {
+    console.error(
+      'No fue posible consultar nombres de estudiantes:',
+      error
+    );
+  }
+
+  return students;
+}
+
+function studentIdentity(
+  id: number,
+  students: Map<number, any>
+) {
+  const student = students.get(id);
+
+  return {
+    id_estudiante: id,
+    nombres: student?.nombres ?? null,
+    apellidos: student?.apellidos ?? null,
+    correo: student?.correo ?? null,
+    codigo_estudiante: student?.codigo_estudiante ?? null,
+    estado_usuario: student?.estado ?? null,
+  };
+}
+
+function groupInfo(group: TeacherGroup) {
+  return {
+    id_grupo: group.id_grupo,
+    nombre: group.nombre,
+    estado: group.estado,
+    practica: group.practica,
+    periodo_academico: group.periodo_academico,
+  };
+}
+
+// ------------------------------------------------------
+// Resumen de seguimiento de todos los estudiantes del grupo
+// (miembros actuales + quienes recibieron actividades).
+// ------------------------------------------------------
+
+app.get('/api/follow-up/groups/:idGrupo', async (req, res) => {
+  const idGrupo = positiveInt(req.params.idGrupo);
+  const idDocente = positiveInt(req.query.teacherId);
+
+  if (!idGrupo || !idDocente) {
+    return res.status(400).json({
+      message: 'Grupo o docente no válido',
+    });
+  }
+
+  try {
+    const group = await findTeacherGroup(idDocente, idGrupo);
+
+    if (!group) {
+      return res.status(404).json({
+        message: 'Grupo no encontrado',
+      });
+    }
+
+    const [memberIds, rows, activities] = await Promise.all([
+      getGroupStudentIds(idGrupo),
+      pool.query(
+        FOLLOW_UP_SELECT +
+          ' ORDER BY a.fecha_limite, a.hora_limite, a.id_actividad',
+        [idGrupo]
+      ),
+      pool.query(
+        `
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (
+              WHERE estado = 'ABIERTA'
+            )::int AS abiertas
+          FROM activities.actividad
+          WHERE id_grupo = $1
+        `,
+        [idGrupo]
+      ),
+    ]);
+
+    const rowsByStudent = new Map<number, any[]>();
+
+    for (const row of rows.rows) {
+      const id = Number(row.id_estudiante);
+      const list = rowsByStudent.get(id) ?? [];
+
+      list.push(row);
+      rowsByStudent.set(id, list);
+    }
+
+    const members = new Set(memberIds);
+
+    const studentIds = [
+      ...new Set([...memberIds, ...rowsByStudent.keys()]),
+    ];
+
+    const students = await getStudentsByIds(studentIds);
+
+    const data = studentIds
+      .map((id) => ({
+        ...studentIdentity(id, students),
+        en_grupo: members.has(id),
+        resumen: summarizeFollowUp(rowsByStudent.get(id) ?? []),
+      }))
+      .sort((a, b) =>
+        `${a.nombres ?? ''} ${a.apellidos ?? ''}`.localeCompare(
+          `${b.nombres ?? ''} ${b.apellidos ?? ''}`,
+          'es'
+        )
+      );
+
+    const grades = rows.rows
+      .map((row) => row.calificacion)
+      .filter((value): value is number => value !== null);
+
+    return res.json({
+      data: {
+        grupo: groupInfo(group),
+        total_actividades: activities.rows[0].total,
+        actividades_abiertas: activities.rows[0].abiertas,
+        promedio_grupo: grades.length
+          ? Math.round(
+              (grades.reduce((sum, value) => sum + value, 0) /
+                grades.length) *
+                10
+            ) / 10
+          : null,
+        estudiantes: data,
+      },
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando seguimiento del grupo:',
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar el seguimiento del grupo',
+    });
+  }
+});
+
+// ------------------------------------------------------
+// Historial de un estudiante dentro de un grupo
+// ------------------------------------------------------
+
+app.get(
+  '/api/follow-up/groups/:idGrupo/students/:idEstudiante',
+  async (req, res) => {
+    const idGrupo = positiveInt(req.params.idGrupo);
+    const idEstudiante = positiveInt(req.params.idEstudiante);
+    const idDocente = positiveInt(req.query.teacherId);
+
+    if (!idGrupo || !idEstudiante || !idDocente) {
+      return res.status(400).json({
+        message: 'Grupo, estudiante o docente no válido',
+      });
+    }
+
+    try {
+      const group = await findTeacherGroup(idDocente, idGrupo);
+
+      if (!group) {
+        return res.status(404).json({
+          message: 'Grupo no encontrado',
+        });
+      }
+
+      const [memberIds, rows] = await Promise.all([
+        getGroupStudentIds(idGrupo),
+        pool.query(
+          FOLLOW_UP_SELECT +
+            `
+              AND ae.id_estudiante = $2
+              ORDER BY
+                a.fecha_limite,
+                a.hora_limite,
+                a.id_actividad
+            `,
+          [idGrupo, idEstudiante]
+        ),
+      ]);
+
+      const enGrupo = memberIds.includes(idEstudiante);
+
+      if (!enGrupo && (rows.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'El estudiante no pertenece al grupo',
+        });
+      }
+
+      const students = await getStudentsByIds([idEstudiante]);
+
+      return res.json({
+        data: {
+          grupo: groupInfo(group),
+          estudiante: {
+            ...studentIdentity(idEstudiante, students),
+            en_grupo: enGrupo,
+          },
+          resumen: summarizeFollowUp(rows.rows),
+          actividades: rows.rows,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando historial del estudiante:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el historial del estudiante',
+      });
+    }
+  }
+);
+
 // ------------------------------------------------------
 // Errores de lectura del cuerpo (tamaño, JSON inválido)
 // ------------------------------------------------------
