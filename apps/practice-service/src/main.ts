@@ -142,6 +142,13 @@ app.post('/api/institutions', async (req, res) => {
     });
   }
 
+  if (nombre.length > 180) {
+    return res.status(400).json({
+      message:
+        'El nombre de la institución no puede superar 180 caracteres',
+    });
+  }
+
   try {
     const existing = await pool.query(
       `
@@ -179,6 +186,372 @@ app.post('/api/institutions', async (req, res) => {
     });
   }
 });
+
+// ======================================================
+// INSTITUCIÓN RECEPTORA - DETALLE Y TUTORES VINCULADOS
+// practices.institucion_tutor indica en qué institución
+// puede actuar cada Tutor Receptor. Los vínculos no se
+// eliminan: se desactivan para conservar el historial.
+// ======================================================
+
+function parsePositiveId(value: unknown): number | null {
+  const id = Number(value);
+
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function findInstitution(idInstitucion: number) {
+  const result = await pool.query(
+    `
+      SELECT id_institucion, nombre
+      FROM practices.institucion
+      WHERE id_institucion = $1
+    `,
+    [idInstitucion]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+// Tutores receptores activos según User Service.
+// Lanza error si el servicio no responde.
+async function fetchAvailableTutors(): Promise<
+  Map<number, any>
+> {
+  const response = await fetch(
+    'http://localhost:3334/api/internal/tutors/available'
+  );
+
+  if (!response.ok) {
+    throw new Error('USER_SERVICE_UNAVAILABLE');
+  }
+
+  const body: any = await response.json();
+
+  return new Map(
+    (body.data ?? []).map((tutor: any) => [
+      Number(tutor.id_tutor),
+      tutor,
+    ])
+  );
+}
+
+// Detalle de institución
+app.get('/api/institutions/:id', async (req, res) => {
+  const idInstitucion = parsePositiveId(req.params.id);
+
+  if (!idInstitucion) {
+    return res.status(400).json({
+      message: 'El identificador de la institución no es válido',
+    });
+  }
+
+  try {
+    const institucion = await findInstitution(idInstitucion);
+
+    if (!institucion) {
+      return res.status(404).json({
+        message: 'Institución receptora no encontrada',
+      });
+    }
+
+    return res.json({ data: institucion });
+  } catch (error) {
+    console.error('Error consultando institución:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar la institución',
+    });
+  }
+});
+
+// Tutores vinculados a una institución
+// Devuelve nombre y cargo del tutor (User Service).
+// tutor_activo = false si el usuario ya no está activo.
+app.get('/api/institutions/:id/tutors', async (req, res) => {
+  const idInstitucion = parsePositiveId(req.params.id);
+
+  if (!idInstitucion) {
+    return res.status(400).json({
+      message: 'El identificador de la institución no es válido',
+    });
+  }
+
+  try {
+    const institucion = await findInstitution(idInstitucion);
+
+    if (!institucion) {
+      return res.status(404).json({
+        message: 'Institución receptora no encontrada',
+      });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT
+          id_institucion_tutor,
+          id_institucion,
+          id_tutor,
+          activo,
+          creado_en
+        FROM practices.institucion_tutor
+        WHERE id_institucion = $1
+        ORDER BY activo DESC, creado_en DESC
+      `,
+      [idInstitucion]
+    );
+
+    let tutores: Map<number, any>;
+
+    try {
+      tutores = await fetchAvailableTutors();
+    } catch {
+      return res.status(503).json({
+        message: 'User Service no disponible',
+      });
+    }
+
+    const data = result.rows.map((row) => {
+      const tutor = tutores.get(Number(row.id_tutor));
+
+      return {
+        ...row,
+        nombres: tutor?.nombres ?? null,
+        apellidos: tutor?.apellidos ?? null,
+        correo: tutor?.correo ?? null,
+        cargo: tutor?.cargo ?? null,
+        tutor_activo: Boolean(tutor),
+      };
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    console.error('Error consultando tutores de la institución:', error);
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar los tutores de la institución',
+    });
+  }
+});
+
+// Vincular tutor a institución
+// Si el vínculo existía inactivo, se reactiva.
+app.post('/api/institutions/:id/tutors', async (req, res) => {
+  const idInstitucion = parsePositiveId(req.params.id);
+  const idTutor = parsePositiveId(req.body?.id_tutor);
+
+  if (!idInstitucion) {
+    return res.status(400).json({
+      message: 'El identificador de la institución no es válido',
+    });
+  }
+
+  if (!idTutor) {
+    return res.status(400).json({
+      message: 'Debe seleccionar un Tutor Receptor',
+    });
+  }
+
+  try {
+    const institucion = await findInstitution(idInstitucion);
+
+    if (!institucion) {
+      return res.status(404).json({
+        message: 'Institución receptora no encontrada',
+      });
+    }
+
+    let tutores: Map<number, any>;
+
+    try {
+      tutores = await fetchAvailableTutors();
+    } catch {
+      return res.status(503).json({
+        message: 'User Service no disponible',
+      });
+    }
+
+    if (!tutores.has(idTutor)) {
+      return res.status(400).json({
+        message:
+          'El Tutor Receptor seleccionado no está disponible',
+      });
+    }
+
+    const existing = await pool.query(
+      `
+        SELECT id_institucion_tutor, activo
+        FROM practices.institucion_tutor
+        WHERE id_institucion = $1
+          AND id_tutor = $2
+      `,
+      [idInstitucion, idTutor]
+    );
+
+    if (existing.rows[0]?.activo === true) {
+      return res.status(409).json({
+        message:
+          'El Tutor Receptor ya está vinculado a esta institución',
+      });
+    }
+
+    if (existing.rows[0]) {
+      const reactivated = await pool.query(
+        `
+          UPDATE practices.institucion_tutor
+          SET activo = TRUE
+          WHERE id_institucion_tutor = $1
+          RETURNING
+            id_institucion_tutor,
+            id_institucion,
+            id_tutor,
+            activo,
+            creado_en
+        `,
+        [existing.rows[0].id_institucion_tutor]
+      );
+
+      return res.json({
+        data: reactivated.rows[0],
+        message:
+          'Se reactivó la vinculación del Tutor Receptor con la institución',
+      });
+    }
+
+    const created = await pool.query(
+      `
+        INSERT INTO practices.institucion_tutor (
+          id_institucion,
+          id_tutor
+        )
+        VALUES ($1, $2)
+        RETURNING
+          id_institucion_tutor,
+          id_institucion,
+          id_tutor,
+          activo,
+          creado_en
+      `,
+      [idInstitucion, idTutor]
+    );
+
+    return res.status(201).json({
+      data: created.rows[0],
+      message:
+        'Tutor Receptor vinculado correctamente a la institución',
+    });
+  } catch (error) {
+    console.error('Error vinculando tutor a institución:', error);
+
+    return res.status(500).json({
+      message:
+        'No fue posible vincular el Tutor Receptor a la institución',
+    });
+  }
+});
+
+// Activar / desactivar vínculo institución-tutor
+app.patch(
+  '/api/institutions/:id/tutors/:idTutor/status',
+  async (req, res) => {
+    const idInstitucion = parsePositiveId(req.params.id);
+    const idTutor = parsePositiveId(req.params.idTutor);
+    const activo = req.body?.activo;
+
+    if (!idInstitucion || !idTutor) {
+      return res.status(400).json({
+        message: 'La vinculación indicada no es válida',
+      });
+    }
+
+    if (typeof activo !== 'boolean') {
+      return res.status(400).json({
+        message:
+          'Debe indicar si la vinculación queda activa o inactiva',
+      });
+    }
+
+    try {
+      const current = await pool.query(
+        `
+          SELECT id_institucion_tutor, activo
+          FROM practices.institucion_tutor
+          WHERE id_institucion = $1
+            AND id_tutor = $2
+        `,
+        [idInstitucion, idTutor]
+      );
+
+      if (!current.rows[0]) {
+        return res.status(404).json({
+          message:
+            'El Tutor Receptor no está vinculado a esta institución',
+        });
+      }
+
+      if (current.rows[0].activo === activo) {
+        return res.status(409).json({
+          message: activo
+            ? 'La vinculación ya se encuentra activa'
+            : 'La vinculación ya se encuentra inactiva',
+        });
+      }
+
+      // Reactivar exige que el tutor siga activo.
+      if (activo) {
+        let tutores: Map<number, any>;
+
+        try {
+          tutores = await fetchAvailableTutors();
+        } catch {
+          return res.status(503).json({
+            message: 'User Service no disponible',
+          });
+        }
+
+        if (!tutores.has(idTutor)) {
+          return res.status(400).json({
+            message:
+              'El Tutor Receptor no se encuentra activo',
+          });
+        }
+      }
+
+      const updated = await pool.query(
+        `
+          UPDATE practices.institucion_tutor
+          SET activo = $1
+          WHERE id_institucion_tutor = $2
+          RETURNING
+            id_institucion_tutor,
+            id_institucion,
+            id_tutor,
+            activo,
+            creado_en
+        `,
+        [activo, current.rows[0].id_institucion_tutor]
+      );
+
+      return res.json({
+        data: updated.rows[0],
+        message: activo
+          ? 'Vinculación activada correctamente'
+          : 'Vinculación desactivada correctamente',
+      });
+    } catch (error) {
+      console.error(
+        'Error actualizando vinculación institución-tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible actualizar la vinculación del Tutor Receptor',
+      });
+    }
+  }
+);
 
 // ======================================================
 // INICIO DEL SERVIDOR

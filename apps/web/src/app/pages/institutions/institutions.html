@@ -1,0 +1,97 @@
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Instituciones Receptoras</h1>
+
+      <p>
+        Entidades donde los estudiantes realizan su práctica y los tutores que las representan.
+      </p>
+    </div>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert success">
+      {{ successMessage() }}
+    </div>
+  }
+
+  <form
+    class="create"
+    (ngSubmit)="createInstitution()"
+  >
+    <input
+      type="text"
+      name="nuevoNombre"
+      maxlength="180"
+      placeholder="Nombre de la nueva institución receptora"
+      [(ngModel)]="nuevoNombre"
+    />
+
+    <button
+      type="submit"
+      class="primary"
+      [disabled]="saving()"
+    >
+      {{ saving() ? 'Registrando...' : 'Registrar institución' }}
+    </button>
+  </form>
+
+  <div class="filters">
+    <input
+      type="text"
+      placeholder="Buscar institución"
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)"
+    />
+  </div>
+
+  @if (loading()) {
+    <p>Cargando instituciones...</p>
+  } @else {
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Institución</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          @for (
+            institucion of filteredInstitutions();
+            track institucion.id_institucion
+          ) {
+            <tr>
+              <td class="strong">
+                {{ institucion.nombre }}
+              </td>
+
+              <td>
+                <div class="actions">
+                  <button
+                    (click)="viewInstitution(institucion)"
+                  >
+                    Ver tutores
+                  </button>
+                </div>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="2">
+                No se encontraron instituciones.
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

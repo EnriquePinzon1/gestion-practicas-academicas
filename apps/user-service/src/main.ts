@@ -140,6 +140,7 @@ app.post('/api/users', async (req, res) => {
     codigo_estudiante,
     semestre,
     id_programa,
+    cargo,
   } = req.body;
 
   // ------------------------------------------------------
@@ -163,6 +164,7 @@ app.post('/api/users', async (req, res) => {
     'COORDINADOR',
     'DOCENTE',
     'ESTUDIANTE',
+    'TUTOR_RECEPTOR',
   ];
 
   if (!rolesPermitidos.includes(rol)) {
@@ -186,6 +188,21 @@ app.post('/api/users', async (req, res) => {
     return res.status(400).json({
       message:
         'Para un estudiante son obligatorios código, semestre y programa académico',
+    });
+  }
+
+  // Cargo del tutor receptor: opcional, máximo 120
+  // caracteres (users.tutor_receptor.cargo VARCHAR(120)).
+  if (
+    rol === 'TUTOR_RECEPTOR' &&
+    cargo !== undefined &&
+    cargo !== null &&
+    (typeof cargo !== 'string' ||
+      cargo.trim().length > 120)
+  ) {
+    return res.status(400).json({
+      message:
+        'El cargo del tutor receptor no puede superar 120 caracteres',
     });
   }
 
@@ -400,6 +417,22 @@ if (rol === 'ESTUDIANTE') {
       );
     }
 
+    if (rol === 'TUTOR_RECEPTOR') {
+      await client.query(
+        `
+        INSERT INTO users.tutor_receptor (
+          id_usuario,
+          cargo
+        )
+        VALUES ($1, $2);
+        `,
+        [
+          idUsuario,
+          cargo?.trim() || null,
+        ]
+      );
+    }
+
     await client.query('COMMIT');
 
     return res.status(201).json({
@@ -529,7 +562,10 @@ app.get('/api/users/:id', async (req, res) => {
 
         e.codigo_estudiante,
         e.semestre,
-        e.id_programa
+        e.id_programa,
+
+        t.id_tutor,
+        t.cargo
 
       FROM users.usuario u
 
@@ -538,6 +574,9 @@ app.get('/api/users/:id', async (req, res) => {
 
       LEFT JOIN users.estudiante e
         ON e.id_usuario = u.id_usuario
+
+      LEFT JOIN users.tutor_receptor t
+        ON t.id_usuario = u.id_usuario
 
       WHERE u.id_usuario = $1;
       `,
@@ -575,6 +614,7 @@ app.patch('/api/users/:id', async (req, res) => {
     telefono,
     semestre,
     id_programa,
+    cargo,
   } = req.body;
 
   if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
@@ -677,6 +717,19 @@ app.patch('/api/users/:id', async (req, res) => {
       }
     }
 
+    if (
+      rol === 'TUTOR_RECEPTOR' &&
+      cargo !== undefined &&
+      cargo !== null &&
+      (typeof cargo !== 'string' ||
+        cargo.trim().length > 120)
+    ) {
+      return res.status(400).json({
+        message:
+          'El cargo del tutor receptor no puede superar 120 caracteres',
+      });
+    }
+
     // ----------------------------------------------------
     // Transacción
     // ----------------------------------------------------
@@ -747,6 +800,43 @@ app.patch('/api/users/:id', async (req, res) => {
       studentData = studentResult.rows[0];
     }
 
+    // ----------------------------------------------------
+    // Actualizar cargo del tutor receptor
+    // ----------------------------------------------------
+
+    let tutorData = null;
+
+    if (rol === 'TUTOR_RECEPTOR') {
+      const tutorResult = await client.query(
+        `
+        UPDATE users.tutor_receptor
+        SET cargo = $1
+        WHERE id_usuario = $2
+        RETURNING
+          id_tutor,
+          cargo;
+        `,
+        [
+          typeof cargo === 'string'
+            ? cargo.trim() || null
+            : null,
+          idUsuario,
+        ]
+      );
+
+      if (tutorResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(409).json({
+          message:
+            'El usuario no tiene un perfil de tutor receptor asociado',
+        });
+      }
+
+      tutorData = tutorResult.rows[0];
+    }
+
     await client.query('COMMIT');
     transactionStarted = false;
 
@@ -756,6 +846,7 @@ app.patch('/api/users/:id', async (req, res) => {
         ...userResult.rows[0],
         rol,
         ...(studentData ?? {}),
+        ...(tutorData ?? {}),
       },
     });
   } catch (error) {

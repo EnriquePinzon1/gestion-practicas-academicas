@@ -1,0 +1,161 @@
+<div class="page">
+  @if (loading() && !institucion()) {
+    <p class="loading">Cargando institución...</p>
+  }
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert success">
+      {{ successMessage() }}
+    </div>
+  }
+
+  @if (institucion(); as inst) {
+    <div class="card">
+      <div class="header">
+        <div>
+          <span class="eyebrow">Institución receptora</span>
+          <h1>{{ inst.nombre }}</h1>
+        </div>
+
+        <div class="actions">
+          <button
+            class="secondary"
+            (click)="back()"
+          >
+            Volver
+          </button>
+        </div>
+      </div>
+
+      <h2>Tutores receptores vinculados</h2>
+
+      <p class="section-hint">
+        Solo los tutores con vinculación activa pueden elegirse en las asignaciones de práctica de esta institución.
+      </p>
+
+      <form
+        class="link"
+        (ngSubmit)="linkTutor()"
+      >
+        <select
+          name="idTutorSeleccionado"
+          [(ngModel)]="idTutorSeleccionado"
+          [disabled]="tutoresParaVincular().length === 0"
+        >
+          <option [ngValue]="null">
+            {{
+              tutoresParaVincular().length === 0
+                ? 'No hay tutores receptores activos por vincular'
+                : 'Seleccione un tutor receptor'
+            }}
+          </option>
+
+          @for (
+            tutor of tutoresParaVincular();
+            track tutor.id_tutor
+          ) {
+            <option [ngValue]="tutor.id_tutor">
+              {{ tutor.nombres }} {{ tutor.apellidos }}
+              @if (tutor.cargo) {
+                · {{ tutor.cargo }}
+              }
+            </option>
+          }
+        </select>
+
+        <button
+          type="submit"
+          class="primary"
+          [disabled]="saving() || tutoresParaVincular().length === 0"
+        >
+          Vincular tutor
+        </button>
+      </form>
+
+      @if (tutoresDisponibles().length === 0) {
+        <p class="section-hint warning">
+          No hay tutores receptores activos. Regístrelos desde Usuarios con el tipo "Tutor Receptor".
+        </p>
+      }
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Tutor</th>
+              <th>Cargo</th>
+              <th>Correo</th>
+              <th>Vinculación</th>
+              <th>Desde</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            @for (v of vinculados(); track v.id_institucion_tutor) {
+              <tr>
+                <td class="strong">
+                  {{ nombre(v) }}
+
+                  @if (!v.tutor_activo) {
+                    <small class="muted">Usuario inactivo</small>
+                  }
+                </td>
+
+                <td>{{ v.cargo || '—' }}</td>
+
+                <td>{{ v.correo || '—' }}</td>
+
+                <td>
+                  <span
+                    class="status"
+                    [class.inactive]="!v.activo"
+                  >
+                    {{ v.activo ? 'Activa' : 'Inactiva' }}
+                  </span>
+                </td>
+
+                <td class="nowrap">
+                  {{ v.creado_en | date: 'dd/MM/yyyy' }}
+                </td>
+
+                <td>
+                  <div class="row-actions">
+                    @if (v.activo) {
+                      <button
+                        class="danger"
+                        [disabled]="saving()"
+                        (click)="setActive(v, false)"
+                      >
+                        Desactivar
+                      </button>
+                    } @else if (v.tutor_activo) {
+                      <button
+                        [disabled]="saving()"
+                        (click)="setActive(v, true)"
+                      >
+                        Reactivar
+                      </button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="6">
+                  Esta institución aún no tiene tutores receptores vinculados.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+</div>

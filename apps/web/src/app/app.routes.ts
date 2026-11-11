@@ -23,6 +23,12 @@ import { AssignmentForm } from
 import { AssignmentDetail } from
   './pages/assignments/assignment-detail';
 
+import { Institutions } from
+  './pages/institutions/institutions';
+
+import { InstitutionDetail } from
+  './pages/institutions/institution-detail';
+
 import { Groups } from './pages/groups/groups';
 import { GroupForm } from './pages/groups/group-form';
 import { GroupDetail } from './pages/groups/group-detail';
@@ -137,6 +143,22 @@ export const appRoutes: Route[] = [
   {
     path: 'asignaciones/:id',
     component: AssignmentDetail,
+    canActivate: [authGuard],
+  },
+
+  // ==========================================
+  // INSTITUCIONES RECEPTORAS Y TUTORES
+  // ==========================================
+
+  {
+    path: 'instituciones',
+    component: Institutions,
+    canActivate: [authGuard],
+  },
+
+  {
+    path: 'instituciones/:id',
+    component: InstitutionDetail,
     canActivate: [authGuard],
   },
 

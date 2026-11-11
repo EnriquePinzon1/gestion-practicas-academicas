@@ -715,6 +715,109 @@ app.post(
   }
 );
 
+// Reenvía una petición a Practice Service conservando
+// el estado HTTP y el cuerpo de la respuesta.
+async function forwardToPracticeService(
+  res: Response,
+  path: string,
+  init: RequestInit,
+  errorLabel: string
+) {
+  try {
+    const response = await fetch(
+      'http://localhost:3335' + path,
+      init
+    );
+
+    const data = await response.json();
+
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error(errorLabel, error);
+
+    return res.status(503).json({
+      message: 'Practice Service no disponible',
+    });
+  }
+}
+
+// Detalle de institución
+app.get(
+  '/api/institutions/:id',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/institutions/' +
+        encodeURIComponent(String(req.params.id)),
+      { method: 'GET' },
+      'Error consultando institución:'
+    )
+);
+
+// Tutores vinculados a una institución
+app.get(
+  '/api/institutions/:id/tutors',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/institutions/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/tutors',
+      { method: 'GET' },
+      'Error consultando tutores de la institución:'
+    )
+);
+
+// Vincular tutor a institución
+app.post(
+  '/api/institutions/:id/tutors',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/institutions/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/tutors',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(req.body),
+      },
+      'Error vinculando tutor a institución:'
+    )
+);
+
+// Activar / desactivar vínculo institución-tutor
+app.patch(
+  '/api/institutions/:id/tutors/:idTutor/status',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/institutions/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/tutors/' +
+        encodeURIComponent(String(req.params.idTutor)) +
+        '/status',
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(req.body),
+      },
+      'Error actualizando vinculación institución-tutor:'
+    )
+);
+
 // Listar prácticas
 app.get(
   '/api/practices',

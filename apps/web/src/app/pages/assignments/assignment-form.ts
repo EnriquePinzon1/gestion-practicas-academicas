@@ -11,7 +11,6 @@ import { ApiService } from '../../core/services/api.service';
 import {
   Asignacion,
   EstudianteDisponible,
-  TutorDisponible,
 } from './assignment.model';
 
 interface Practica {
@@ -25,6 +24,15 @@ interface Practica {
 interface Institucion {
   id_institucion: number;
   nombre: string;
+}
+
+interface TutorVinculado {
+  id_tutor: number;
+  activo: boolean;
+  tutor_activo: boolean;
+  nombres: string | null;
+  apellidos: string | null;
+  cargo: string | null;
 }
 
 const FORMATO_PERIODO = /^\d{4}-[12]$/;
@@ -49,13 +57,17 @@ export class AssignmentForm implements OnInit {
   practicas = signal<Practica[]>([]);
   estudiantes = signal<EstudianteDisponible[]>([]);
   instituciones = signal<Institucion[]>([]);
-  tutores = signal<TutorDisponible[]>([]);
+
+  // Tutores con vínculo activo a la institución elegida
+  // (regla: el tutor debe estar asociado a la institución).
+  tutores = signal<TutorVinculado[]>([]);
+  loadingTutors = signal(false);
 
   // Signals para que los computed reaccionen a la selección
   idPractica = signal<number | null>(null);
   idEstudiante = signal<number | null>(null);
 
-  idInstitucion: number | null = null;
+  idInstitucion = signal<number | null>(null);
   idTutor: number | null = null;
   periodoAcademico = this.periodoActual();
 
@@ -109,7 +121,6 @@ export class AssignmentForm implements OnInit {
         practicesResponse,
         studentsResponse,
         institutionsResponse,
-        tutorsResponse,
       ] = await Promise.all([
         this.api.get<{
           data: Practica[];
@@ -124,12 +135,6 @@ export class AssignmentForm implements OnInit {
         this.api.get<{
           data: Institucion[];
         }>('/institutions'),
-
-        this.api.get<{
-          data: TutorDisponible[];
-        }>(
-          '/practice-assignment-options/tutors'
-        ),
       ]);
 
       this.practicas.set(
@@ -142,10 +147,6 @@ export class AssignmentForm implements OnInit {
 
       this.instituciones.set(
         institutionsResponse.data
-      );
-
-      this.tutores.set(
-        tutorsResponse.data
       );
     } catch (error) {
       this.errorMessage.set(
@@ -179,6 +180,51 @@ export class AssignmentForm implements OnInit {
     }
   }
 
+  async onInstitutionChange(
+    idInstitucion: number | null
+  ) {
+    this.idInstitucion.set(idInstitucion);
+    this.idTutor = null;
+    this.tutores.set([]);
+
+    if (!idInstitucion) {
+      return;
+    }
+
+    this.loadingTutors.set(true);
+
+    try {
+      const response =
+        await this.api.get<{
+          data: TutorVinculado[];
+        }>(
+          '/institutions/' +
+            idInstitucion +
+            '/tutors'
+        );
+
+      // Evita pintar tutores de una institución
+      // que ya no está seleccionada.
+      if (this.idInstitucion() !== idInstitucion) {
+        return;
+      }
+
+      this.tutores.set(
+        response.data.filter(
+          (t) => t.activo && t.tutor_activo
+        )
+      );
+    } catch (error) {
+      this.errorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible consultar los tutores de la institución.'
+      );
+    } finally {
+      this.loadingTutors.set(false);
+    }
+  }
+
   async save() {
     this.errorMessage.set('');
     this.successMessage.set('');
@@ -200,7 +246,7 @@ export class AssignmentForm implements OnInit {
       return;
     }
 
-    if (!this.idInstitucion) {
+    if (!this.idInstitucion()) {
       this.errorMessage.set(
         'Seleccione la institución receptora.'
       );
@@ -227,7 +273,7 @@ export class AssignmentForm implements OnInit {
           id_practica:
             this.idPractica(),
           id_institucion:
-            this.idInstitucion,
+            this.idInstitucion(),
           id_tutor: this.idTutor,
           periodo_academico: periodo,
         });

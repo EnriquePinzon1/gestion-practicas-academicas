@@ -94,7 +94,8 @@
         <label>
           Institución receptora *
           <select
-            [(ngModel)]="idInstitucion"
+            [ngModel]="idInstitucion()"
+            (ngModelChange)="onInstitutionChange($event)"
             name="idInstitucion"
           >
             <option [ngValue]="null">
@@ -117,9 +118,14 @@
           <select
             [(ngModel)]="idTutor"
             name="idTutor"
+            [disabled]="!idInstitucion() || loadingTutors()"
           >
             <option [ngValue]="null">
-              Sin tutor por ahora
+              {{
+                idInstitucion()
+                  ? 'Sin tutor por ahora'
+                  : 'Primero seleccione la institución'
+              }}
             </option>
 
             @for (
@@ -135,13 +141,15 @@
             }
           </select>
 
-          <small class="hint">
-            @if (tutores().length === 0) {
-              No hay tutores receptores activos registrados. Puede asignarse más adelante.
-            } @else {
-              El tutor debe estar vinculado a la institución seleccionada.
-            }
-          </small>
+          @if (idInstitucion() && !loadingTutors()) {
+            <small class="hint">
+              @if (tutores().length === 0) {
+                Esta institución no tiene tutores receptores vinculados. Puede asignarse más adelante.
+              } @else {
+                Solo se muestran tutores con vinculación activa a esta institución.
+              }
+            </small>
+          }
         </label>
 
         <label>
