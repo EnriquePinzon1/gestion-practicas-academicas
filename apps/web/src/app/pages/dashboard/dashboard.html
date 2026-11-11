@@ -26,6 +26,13 @@
         </p>
       }
 
+      @if (isStudent()) {
+        <p>
+          Tus actividades de seguimiento
+          y entregas de práctica.
+        </p>
+      }
+
     </div>
 
     <div class="coordinator-badge">
@@ -49,6 +56,12 @@
         @if (isTeacher()) {
           <small>
             Docente Asesor
+          </small>
+        }
+
+        @if (isStudent()) {
+          <small>
+            Estudiante
           </small>
         }
 
@@ -644,6 +657,152 @@
 
               <div class="empty">
                 No hay actividades registradas.
+              </div>
+
+            }
+
+          </div>
+
+        </article>
+
+      </section>
+
+    }
+
+    @if (isStudent()) {
+
+      <section class="metrics">
+
+        <div
+          class="metric-card"
+          (click)="goToStudentActivities()"
+        >
+
+          <div class="metric-icon practices">
+            ✎
+          </div>
+
+          <div>
+            <span>
+              Pendientes por entregar
+            </span>
+
+            <strong>
+              {{ pendientesEstudiante().length }}
+            </strong>
+          </div>
+
+        </div>
+
+
+        <div
+          class="metric-card"
+          (click)="goToStudentActivities()"
+        >
+
+          <div class="metric-icon teachers">
+            ✓
+          </div>
+
+          <div>
+            <span>
+              Entregadas
+            </span>
+
+            <strong>
+              {{ entregadasEstudiante() }}
+            </strong>
+          </div>
+
+        </div>
+
+
+        <div
+          class="metric-card"
+          (click)="goToStudentActivities()"
+        >
+
+          <div class="metric-icon groups">
+            ⌛
+          </div>
+
+          <div>
+            <span>
+              No entregadas
+            </span>
+
+            <strong>
+              {{ noEntregadasEstudiante() }}
+            </strong>
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <section class="dashboard-grid">
+
+        <article class="panel">
+
+          <div class="panel-header">
+
+            <div>
+              <h2>
+                Pendientes por entregar
+              </h2>
+
+              <p>
+                Ordenadas por fecha límite
+              </p>
+            </div>
+
+          </div>
+
+
+          <div class="panel-list">
+
+            @for (
+              actividad of pendientesEstudiante();
+              track actividad.id_actividad_estudiante
+            ) {
+
+              <div
+                class="list-item"
+                (click)="openStudentActivity(actividad.id_actividad_estudiante)"
+              >
+
+                <div>
+
+                  <strong>
+                    {{ actividad.titulo }}
+                  </strong>
+
+                  <span>
+                    Fecha límite:
+                    {{
+                      fechaLimite(
+                        actividad.fecha_limite,
+                        actividad.hora_limite
+                      )
+                    }}
+                    ·
+                    {{ actividad.total_preguntas }}
+                    pregunta(s)
+                  </span>
+
+                </div>
+
+                <span class="state">
+                  PENDIENTE
+                </span>
+
+              </div>
+
+            } @empty {
+
+              <div class="empty">
+                No tienes actividades pendientes.
               </div>
 
             }

@@ -79,6 +79,27 @@ async patch<T>(
   return this.handleResponse<T>(response);
 }
 
+  async put<T>(
+    endpoint: string,
+    body: unknown
+  ): Promise<T> {
+    const token = await this.getToken();
+
+    const response = await fetch(
+      `${this.gatewayUrl}${endpoint}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    return this.handleResponse<T>(response);
+  }
+
   private async handleResponse<T>(
     response: Response
   ): Promise<T> {

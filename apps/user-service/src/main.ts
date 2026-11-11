@@ -322,6 +322,12 @@ if (rol === 'ESTUDIANTE') {
     } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       correo.trim().toLowerCase(),
       {
+        // El enlace de invitación debe abrir la página
+        // donde el usuario define su contraseña.
+        redirectTo:
+          (process.env.WEB_APP_URL ??
+            'http://localhost:4200') +
+          '/reset-password',
         data: {
           nombres: nombres.trim(),
           apellidos: apellidos.trim(),
@@ -1055,6 +1061,74 @@ app.get(
       return res.status(500).json({
         message:
           'No fue posible consultar el Docente Asesor',
+      });
+    }
+  }
+);
+
+// ======================================================
+// ESTUDIANTE AUTENTICADO
+// Usado por API Gateway para validar el rol ESTUDIANTE
+// ======================================================
+
+app.get(
+  '/api/internal/students/by-auth/:authUserId',
+  async (req, res) => {
+    const authUserId = String(
+      req.params.authUserId ?? ''
+    ).trim();
+
+    if (!authUserId) {
+      return res.status(400).json({
+        message:
+          'El identificador de autenticación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            e.id_estudiante,
+            e.id_usuario,
+            e.codigo_estudiante,
+            e.semestre,
+            e.id_programa,
+            u.auth_user_id,
+            u.nombres,
+            u.apellidos,
+            u.correo,
+            u.estado,
+            r.nombre AS rol
+          FROM users.estudiante e
+          INNER JOIN users.usuario u
+            ON u.id_usuario = e.id_usuario
+          INNER JOIN users.rol r
+            ON r.id_rol = u.id_rol
+          WHERE u.auth_user_id = $1
+          LIMIT 1
+        `,
+        [authUserId]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Estudiante no encontrado',
+        });
+      }
+
+      return res.json({
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando estudiante por auth:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar el estudiante',
       });
     }
   }

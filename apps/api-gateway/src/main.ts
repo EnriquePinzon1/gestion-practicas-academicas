@@ -238,6 +238,101 @@ async function requireTeacher(
 
 
 // ========================================================
+// MIDDLEWARE: ESTUDIANTE ACTIVO
+// ========================================================
+
+async function requireStudent(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const authUser = res.locals.user;
+
+    if (!authUser?.id) {
+      return res.status(401).json({
+        message: 'Usuario no autenticado',
+      });
+    }
+
+    const response = await fetch(
+      `http://localhost:3334/api/internal/students/by-auth/${encodeURIComponent(authUser.id)}`
+    );
+
+    if (!response.ok) {
+      return res.status(403).json({
+        message:
+          'No tiene permisos de Estudiante',
+      });
+    }
+
+    const body = (await response.json()) as {
+      data?: {
+        id_estudiante: number;
+        estado: string;
+        rol: string;
+      };
+    };
+
+    const student = body.data;
+
+    if (!student || student.rol !== 'ESTUDIANTE') {
+      return res.status(403).json({
+        message:
+          'No tiene permisos de Estudiante',
+      });
+    }
+
+    if (student.estado !== 'ACTIVO') {
+      return res.status(403).json({
+        message:
+          'El estudiante se encuentra inactivo',
+      });
+    }
+
+    res.locals.student = student;
+
+    next();
+  } catch (error) {
+    console.error(
+      'Error validating student:',
+      error
+    );
+
+    return res.status(503).json({
+      message:
+        'No fue posible validar los permisos del estudiante',
+    });
+  }
+}
+
+// Reenvía una petición a Activity Service conservando
+// el estado HTTP y el cuerpo de la respuesta.
+async function forwardToActivityService(
+  res: Response,
+  path: string,
+  init: RequestInit,
+  errorLabel: string
+) {
+  try {
+    const response = await fetch(
+      'http://localhost:3336' + path,
+      init
+    );
+
+    const data = await response.json();
+
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error(errorLabel, error);
+
+    return res.status(503).json({
+      message: 'Activity Service no disponible',
+    });
+  }
+}
+
+// ========================================================
 // GATEWAY HEALTH
 // ========================================================
 
@@ -1776,6 +1871,86 @@ app.patch(
       });
     }
   }
+);
+
+// ========================================================
+// ENTREGAS - DOCENTE ASESOR
+// ========================================================
+
+app.get(
+  '/api/activities/:id/submissions',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/activities/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/submissions?teacherId=' +
+        res.locals.teacher.id_docente,
+      { method: 'GET' },
+      'Error consultando entregas de la actividad:'
+    )
+);
+
+// ========================================================
+// ENTREGAS - ESTUDIANTE
+// El id del estudiante sale siempre del token, nunca del
+// cliente: solo puede ver y entregar sus actividades.
+// ========================================================
+
+app.get(
+  '/api/student/activities',
+  requireAuth,
+  requireStudent,
+  (_req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/student/' +
+        res.locals.student.id_estudiante +
+        '/activities',
+      { method: 'GET' },
+      'Error consultando actividades del estudiante:'
+    )
+);
+
+app.get(
+  '/api/student/activities/:id',
+  requireAuth,
+  requireStudent,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/student/' +
+        res.locals.student.id_estudiante +
+        '/activities/' +
+        encodeURIComponent(String(req.params.id)),
+      { method: 'GET' },
+      'Error consultando actividad del estudiante:'
+    )
+);
+
+app.put(
+  '/api/student/activities/:id/submission',
+  requireAuth,
+  requireStudent,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/student/' +
+        res.locals.student.id_estudiante +
+        '/activities/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/submission',
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(req.body),
+      },
+      'Error registrando entrega:'
+    )
 );
 
 // AQUÍ empieza el servidor

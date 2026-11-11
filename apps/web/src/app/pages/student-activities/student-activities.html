@@ -1,0 +1,92 @@
+<div class="page">
+  <div class="header">
+    <h1>Mis actividades</h1>
+
+    <p>
+      Actividades de seguimiento asignadas por tu Docente Asesor.
+    </p>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert error">
+      {{ errorMessage() }}
+    </div>
+  }
+
+  <div class="summary">
+    <button
+      class="chip pendiente"
+      [class.selected]="filtro() === 'PENDIENTE'"
+      (click)="setFiltro('PENDIENTE')"
+    >
+      <strong>{{ conteo().PENDIENTE }}</strong>
+      Pendientes
+    </button>
+
+    <button
+      class="chip entregada"
+      [class.selected]="filtro() === 'ENTREGADA'"
+      (click)="setFiltro('ENTREGADA')"
+    >
+      <strong>{{ conteo().ENTREGADA }}</strong>
+      Entregadas
+    </button>
+
+    <button
+      class="chip no_entregada"
+      [class.selected]="filtro() === 'NO_ENTREGADA'"
+      (click)="setFiltro('NO_ENTREGADA')"
+    >
+      <strong>{{ conteo().NO_ENTREGADA }}</strong>
+      No entregadas
+    </button>
+  </div>
+
+  @if (loading()) {
+    <p>Cargando actividades...</p>
+  } @else {
+    <div class="list">
+      @for (
+        actividad of filtradas();
+        track actividad.id_actividad_estudiante
+      ) {
+        <button
+          class="item"
+          (click)="open(actividad)"
+        >
+          <div class="item-main">
+            <strong>{{ actividad.titulo }}</strong>
+
+            <span>
+              Fecha límite:
+              {{ fechaLimite(actividad.fecha_limite, actividad.hora_limite) }}
+              · {{ actividad.total_preguntas }} pregunta(s)
+            </span>
+
+            @if (actividad.entregado_en) {
+              <span class="sent">
+                Entregada el
+                {{ actividad.entregado_en | date: 'dd/MM/yyyy, HH:mm' }}
+              </span>
+            }
+          </div>
+
+          <span
+            class="status"
+            [ngClass]="estado(actividad).toLowerCase()"
+          >
+            {{ etiquetas[estado(actividad)] }}
+          </span>
+        </button>
+      } @empty {
+        <div class="empty">
+          @if (filtro()) {
+            No hay actividades en este estado.
+          } @else {
+            Aún no tienes actividades asignadas.
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

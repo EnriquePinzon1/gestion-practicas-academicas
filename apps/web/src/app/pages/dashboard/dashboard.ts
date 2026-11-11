@@ -9,6 +9,12 @@ import { Router } from '@angular/router';
 import { ApiService } from
   '../../core/services/api.service';
 
+import {
+  ActividadEstudiante,
+  estadoVisible,
+  formatearFechaLimite,
+} from '../student-activities/student-activity.model';
+
 interface AuthProfile {
   authenticated: boolean;
   auth_user_id: string;
@@ -76,6 +82,9 @@ export class Dashboard {
   practicas = signal<Practica[]>([]);
   grupos = signal<Grupo[]>([]);
   actividades = signal<Actividad[]>([]);
+  actividadesEstudiante = signal<ActividadEstudiante[]>([]);
+
+  readonly fechaLimite = formatearFechaLimite;
 
   loading = signal(false);
   errorMessage = signal('');
@@ -86,6 +95,34 @@ export class Dashboard {
 
   isTeacher = computed(
     () => this.role() === 'DOCENTE'
+  );
+
+  isStudent = computed(
+    () => this.role() === 'ESTUDIANTE'
+  );
+
+  // ==========================================
+  // MÉTRICAS ESTUDIANTE
+  // ==========================================
+
+  pendientesEstudiante = computed(() =>
+    this.actividadesEstudiante().filter(
+      (a) => estadoVisible(a) === 'PENDIENTE'
+    )
+  );
+
+  entregadasEstudiante = computed(
+    () =>
+      this.actividadesEstudiante().filter(
+        (a) => estadoVisible(a) === 'ENTREGADA'
+      ).length
+  );
+
+  noEntregadasEstudiante = computed(
+    () =>
+      this.actividadesEstudiante().filter(
+        (a) => estadoVisible(a) === 'NO_ENTREGADA'
+      ).length
   );
 
   // ==========================================
@@ -293,6 +330,26 @@ export class Dashboard {
         return;
       }
 
+      // ======================================
+      // ESTUDIANTE
+      // ======================================
+
+      if (
+        profile.rol === 'ESTUDIANTE'
+      ) {
+
+        const activitiesResponse =
+          await this.api.get<{
+            data: ActividadEstudiante[];
+          }>('/student/activities');
+
+        this.actividadesEstudiante.set(
+          activitiesResponse.data
+        );
+
+        return;
+      }
+
       throw new Error(
         'El rol del usuario no tiene un panel configurado.'
       );
@@ -355,6 +412,23 @@ export class Dashboard {
   viewPractice(id: number) {
     this.router.navigate([
       '/practicas',
+      id,
+    ]);
+  }
+
+  // ==========================================
+  // NAVEGACIÓN ESTUDIANTE
+  // ==========================================
+
+  goToStudentActivities() {
+    this.router.navigate([
+      '/mis-actividades',
+    ]);
+  }
+
+  openStudentActivity(id: number) {
+    this.router.navigate([
+      '/mis-actividades',
       id,
     ]);
   }

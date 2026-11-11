@@ -830,6 +830,28 @@ app.patch('/api/activities/:id', async (req, res) => {
       });
     }
 
+    // La edición reemplaza las preguntas; si ya hay
+    // entregas, se perderían las respuestas asociadas.
+    const submissions = await client.query(
+      `
+        SELECT 1
+        FROM activities.entrega en
+        INNER JOIN activities.actividad_estudiante ae
+          ON ae.id_actividad_estudiante =
+             en.id_actividad_estudiante
+        WHERE ae.id_actividad = $1
+        LIMIT 1
+      `,
+      [idActividad]
+    );
+
+    if ((submissions.rowCount ?? 0) > 0) {
+      return res.status(409).json({
+        message:
+          'No es posible modificar la actividad porque ya tiene entregas de estudiantes',
+      });
+    }
+
     const deadlineResult = await client.query(
       `
         SELECT
@@ -1002,6 +1024,593 @@ app.patch(
       return res.status(500).json({
         message:
           'No fue posible cerrar la actividad',
+      });
+    }
+  }
+);
+
+// ======================================================
+// ENTREGAS DE ACTIVIDADES
+//
+// Una entrega pertenece a una fila de actividad_estudiante
+// y contiene una respuesta por cada pregunta.
+// Reglas:
+// - Solo el estudiante dueño de la actividad asignada.
+// - La actividad debe estar ABIERTA y dentro del plazo
+//   (fecha + hora límite en America/Bogota).
+// - Deben responderse todas las preguntas.
+// - Puede corregirse mientras siga abierta y en plazo.
+// ======================================================
+
+const MAX_RESPUESTA = 10000;
+
+function positiveInt(value: unknown): number | null {
+  const n = Number(value);
+
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// Datos de la actividad asignada al estudiante.
+// $1 = id_estudiante, $2 = id_actividad_estudiante (opcional)
+const STUDENT_ACTIVITY_SELECT = `
+  SELECT
+    ae.id_actividad_estudiante,
+    ae.id_actividad,
+    ae.estado AS estado_entrega,
+    ae.asignado_en,
+    a.id_grupo,
+    a.titulo,
+    a.descripcion,
+    a.fecha_limite,
+    a.hora_limite,
+    a.estado AS estado_actividad,
+    (
+      (a.fecha_limite + a.hora_limite)
+      AT TIME ZONE 'America/Bogota'
+    ) <= NOW() AS vencida,
+    (
+      SELECT COUNT(*)::int
+      FROM activities.pregunta p
+      WHERE p.id_actividad = a.id_actividad
+    ) AS total_preguntas,
+    en.id_entrega,
+    en.entregado_en,
+    en.actualizado_en AS entrega_actualizada_en
+  FROM activities.actividad_estudiante ae
+  INNER JOIN activities.actividad a
+    ON a.id_actividad = ae.id_actividad
+  LEFT JOIN activities.entrega en
+    ON en.id_actividad_estudiante =
+       ae.id_actividad_estudiante
+  WHERE ae.id_estudiante = $1
+`;
+
+function withPermissions(row: any) {
+  return {
+    ...row,
+    puede_entregar:
+      row.estado_actividad === 'ABIERTA' &&
+      !row.vencida,
+  };
+}
+
+// ------------------------------------------------------
+// Listar actividades asignadas al estudiante
+// ------------------------------------------------------
+
+app.get(
+  '/api/student/:idEstudiante/activities',
+  async (req, res) => {
+    const idEstudiante = positiveInt(
+      req.params.idEstudiante
+    );
+
+    if (!idEstudiante) {
+      return res.status(400).json({
+        message: 'El estudiante no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        STUDENT_ACTIVITY_SELECT +
+          `
+          ORDER BY
+            (a.estado = 'ABIERTA') DESC,
+            a.fecha_limite ASC,
+            a.hora_limite ASC
+          `,
+        [idEstudiante]
+      );
+
+      return res.json({
+        data: result.rows.map(withPermissions),
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando actividades del estudiante:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar las actividades del estudiante',
+      });
+    }
+  }
+);
+
+// ------------------------------------------------------
+// Detalle de actividad asignada + preguntas + respuestas
+// ------------------------------------------------------
+
+app.get(
+  '/api/student/:idEstudiante/activities/:idActividadEstudiante',
+  async (req, res) => {
+    const idEstudiante = positiveInt(
+      req.params.idEstudiante
+    );
+
+    const idActividadEstudiante = positiveInt(
+      req.params.idActividadEstudiante
+    );
+
+    if (!idEstudiante || !idActividadEstudiante) {
+      return res.status(400).json({
+        message: 'La actividad solicitada no es válida',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        STUDENT_ACTIVITY_SELECT +
+          ' AND ae.id_actividad_estudiante = $2',
+        [idEstudiante, idActividadEstudiante]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Actividad no encontrada',
+        });
+      }
+
+      const actividad = result.rows[0];
+
+      const questions = await pool.query(
+        `
+          SELECT
+            p.id_pregunta,
+            p.enunciado,
+            p.orden,
+            r.contenido AS respuesta
+          FROM activities.pregunta p
+          LEFT JOIN activities.respuesta r
+            ON r.id_pregunta = p.id_pregunta
+           AND r.id_entrega = $2
+          WHERE p.id_actividad = $1
+          ORDER BY p.orden ASC
+        `,
+        [
+          actividad.id_actividad,
+          actividad.id_entrega,
+        ]
+      );
+
+      return res.json({
+        data: {
+          ...withPermissions(actividad),
+          preguntas: questions.rows,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando actividad del estudiante:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar la actividad',
+      });
+    }
+  }
+);
+
+// ------------------------------------------------------
+// Registrar o corregir entrega
+// Body: { respuestas: [{ id_pregunta, contenido }] }
+// ------------------------------------------------------
+
+app.put(
+  '/api/student/:idEstudiante/activities/:idActividadEstudiante/submission',
+  async (req, res) => {
+    const idEstudiante = positiveInt(
+      req.params.idEstudiante
+    );
+
+    const idActividadEstudiante = positiveInt(
+      req.params.idActividadEstudiante
+    );
+
+    if (!idEstudiante || !idActividadEstudiante) {
+      return res.status(400).json({
+        message: 'La actividad solicitada no es válida',
+      });
+    }
+
+    const rawAnswers = req.body?.respuestas;
+
+    if (!Array.isArray(rawAnswers) || rawAnswers.length === 0) {
+      return res.status(400).json({
+        message: 'Debe responder las preguntas de la actividad',
+      });
+    }
+
+    const answers = new Map<number, string>();
+
+    for (const item of rawAnswers) {
+      const idPregunta = positiveInt(item?.id_pregunta);
+      const contenido =
+        typeof item?.contenido === 'string'
+          ? item.contenido.trim()
+          : '';
+
+      if (!idPregunta) {
+        return res.status(400).json({
+          message: 'Una de las respuestas no indica una pregunta válida',
+        });
+      }
+
+      if (answers.has(idPregunta)) {
+        return res.status(400).json({
+          message: 'Hay respuestas repetidas para la misma pregunta',
+        });
+      }
+
+      if (!contenido) {
+        return res.status(400).json({
+          message: 'Todas las preguntas deben tener una respuesta',
+        });
+      }
+
+      if (contenido.length > MAX_RESPUESTA) {
+        return res.status(400).json({
+          message:
+            'Cada respuesta puede tener como máximo ' +
+            MAX_RESPUESTA +
+            ' caracteres',
+        });
+      }
+
+      answers.set(idPregunta, contenido);
+    }
+
+    const client = await pool.connect();
+    let transactionStarted = false;
+
+    try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+
+      // Bloquea la actividad asignada (evita entregas
+      // simultáneas) y la actividad (evita cerrarla a
+      // mitad de la entrega).
+      const assigned = await client.query(
+        `
+          SELECT
+            ae.id_actividad_estudiante,
+            ae.id_actividad
+          FROM activities.actividad_estudiante ae
+          WHERE ae.id_actividad_estudiante = $1
+            AND ae.id_estudiante = $2
+          FOR UPDATE
+        `,
+        [idActividadEstudiante, idEstudiante]
+      );
+
+      if ((assigned.rowCount ?? 0) === 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(404).json({
+          message: 'Actividad no encontrada',
+        });
+      }
+
+      const idActividad = assigned.rows[0].id_actividad;
+
+      const activity = await client.query(
+        `
+          SELECT
+            estado,
+            (
+              (fecha_limite + hora_limite)
+              AT TIME ZONE 'America/Bogota'
+            ) <= NOW() AS vencida
+          FROM activities.actividad
+          WHERE id_actividad = $1
+          FOR SHARE
+        `,
+        [idActividad]
+      );
+
+      if (activity.rows[0].estado !== 'ABIERTA') {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(409).json({
+          message:
+            'La actividad está cerrada y ya no recibe entregas',
+        });
+      }
+
+      if (activity.rows[0].vencida) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(409).json({
+          message:
+            'La fecha límite de la actividad ya pasó',
+        });
+      }
+
+      const questions = await client.query(
+        `
+          SELECT id_pregunta
+          FROM activities.pregunta
+          WHERE id_actividad = $1
+        `,
+        [idActividad]
+      );
+
+      const questionIds = new Set<number>(
+        questions.rows.map((q) => Number(q.id_pregunta))
+      );
+
+      const unknown = [...answers.keys()].some(
+        (id) => !questionIds.has(id)
+      );
+
+      if (unknown) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(400).json({
+          message:
+            'Una de las respuestas no corresponde a esta actividad',
+        });
+      }
+
+      if (answers.size !== questionIds.size) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+
+        return res.status(400).json({
+          message: 'Todas las preguntas deben tener una respuesta',
+        });
+      }
+
+      const submission = await client.query(
+        `
+          INSERT INTO activities.entrega (
+            id_actividad_estudiante
+          )
+          VALUES ($1)
+          ON CONFLICT (id_actividad_estudiante)
+          DO UPDATE SET actualizado_en = NOW()
+          RETURNING
+            id_entrega,
+            entregado_en,
+            actualizado_en,
+            (xmax = 0) AS creada
+        `,
+        [idActividadEstudiante]
+      );
+
+      const entrega = submission.rows[0];
+
+      for (const [idPregunta, contenido] of answers) {
+        await client.query(
+          `
+            INSERT INTO activities.respuesta (
+              id_entrega,
+              id_pregunta,
+              contenido
+            )
+            VALUES ($1, $2, $3)
+            ON CONFLICT (id_entrega, id_pregunta)
+            DO UPDATE SET contenido = EXCLUDED.contenido
+          `,
+          [entrega.id_entrega, idPregunta, contenido]
+        );
+      }
+
+      await client.query(
+        `
+          UPDATE activities.actividad_estudiante
+          SET estado = 'ENTREGADA'
+          WHERE id_actividad_estudiante = $1
+        `,
+        [idActividadEstudiante]
+      );
+
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      return res.status(entrega.creada ? 201 : 200).json({
+        data: {
+          id_entrega: entrega.id_entrega,
+          id_actividad_estudiante: idActividadEstudiante,
+          estado_entrega: 'ENTREGADA',
+          entregado_en: entrega.entregado_en,
+          actualizado_en: entrega.actualizado_en,
+        },
+        message: entrega.creada
+          ? 'Entrega registrada correctamente'
+          : 'Entrega actualizada correctamente',
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        await client.query('ROLLBACK');
+      }
+
+      console.error('Error registrando entrega:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible registrar la entrega',
+      });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+// ------------------------------------------------------
+// Docente: entregas de una actividad
+// Una fila por estudiante asignado (snapshot), con su
+// estado y respuestas.
+// ------------------------------------------------------
+
+app.get(
+  '/api/activities/:id/submissions',
+  async (req, res) => {
+    const idActividad = positiveInt(req.params.id);
+    const idDocente = positiveInt(req.query.teacherId);
+
+    if (!idActividad || !idDocente) {
+      return res.status(400).json({
+        message: 'Actividad o docente no válido',
+      });
+    }
+
+    try {
+      const activity = await pool.query(
+        `
+          SELECT id_actividad
+          FROM activities.actividad
+          WHERE id_actividad = $1
+            AND id_docente = $2
+        `,
+        [idActividad, idDocente]
+      );
+
+      if ((activity.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Actividad no encontrada',
+        });
+      }
+
+      const rows = await pool.query(
+        `
+          SELECT
+            ae.id_actividad_estudiante,
+            ae.id_estudiante,
+            ae.estado AS estado_entrega,
+            en.id_entrega,
+            en.entregado_en,
+            en.actualizado_en AS entrega_actualizada_en
+          FROM activities.actividad_estudiante ae
+          LEFT JOIN activities.entrega en
+            ON en.id_actividad_estudiante =
+               ae.id_actividad_estudiante
+          WHERE ae.id_actividad = $1
+          ORDER BY ae.id_estudiante
+        `,
+        [idActividad]
+      );
+
+      const answers = await pool.query(
+        `
+          SELECT
+            r.id_entrega,
+            r.id_pregunta,
+            r.contenido
+          FROM activities.respuesta r
+          INNER JOIN activities.entrega en
+            ON en.id_entrega = r.id_entrega
+          INNER JOIN activities.actividad_estudiante ae
+            ON ae.id_actividad_estudiante =
+               en.id_actividad_estudiante
+          WHERE ae.id_actividad = $1
+        `,
+        [idActividad]
+      );
+
+      const answersBySubmission = new Map<number, any[]>();
+
+      for (const answer of answers.rows) {
+        const list =
+          answersBySubmission.get(answer.id_entrega) ?? [];
+
+        list.push({
+          id_pregunta: answer.id_pregunta,
+          contenido: answer.contenido,
+        });
+
+        answersBySubmission.set(answer.id_entrega, list);
+      }
+
+      // Nombres desde User Service. Si no responde, se
+      // devuelven las entregas sin nombre.
+      const students = new Map<number, any>();
+
+      try {
+        const response = await fetch(
+          'http://localhost:3334/api/internal/students/available'
+        );
+
+        if (response.ok) {
+          const body: any = await response.json();
+
+          for (const s of body.data ?? []) {
+            students.set(Number(s.id_estudiante), s);
+          }
+        }
+      } catch (error) {
+        console.error(
+          'No fue posible consultar nombres de estudiantes:',
+          error
+        );
+      }
+
+      const data = rows.rows.map((row) => {
+        const student = students.get(
+          Number(row.id_estudiante)
+        );
+
+        return {
+          ...row,
+          nombres: student?.nombres ?? null,
+          apellidos: student?.apellidos ?? null,
+          codigo_estudiante:
+            student?.codigo_estudiante ?? null,
+          respuestas: row.id_entrega
+            ? answersBySubmission.get(row.id_entrega) ?? []
+            : [],
+        };
+      });
+
+      const entregadas = data.filter(
+        (d) => d.estado_entrega === 'ENTREGADA'
+      ).length;
+
+      return res.json({
+        data: {
+          total: data.length,
+          entregadas,
+          pendientes: data.length - entregadas,
+          estudiantes: data,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando entregas de la actividad:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar las entregas de la actividad',
       });
     }
   }

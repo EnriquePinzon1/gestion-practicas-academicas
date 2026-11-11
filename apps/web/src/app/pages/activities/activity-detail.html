@@ -178,8 +178,9 @@
           <h2>Entregas</h2>
 
           <p>
-            Estado de los estudiantes
-            pertenecientes al grupo.
+            {{ totalEntregadas() }} de
+            {{ submissions().length }}
+            estudiantes han entregado.
           </p>
         </div>
 
@@ -210,7 +211,7 @@
         @for (
           delivery of
             filteredDeliveries();
-          track delivery.id_estudiante
+          track delivery.id_actividad_estudiante
         ) {
 
           <article class="delivery-row">
@@ -248,11 +249,52 @@
             </div>
 
 
-            <span
-              class="delivery-state pending"
-            >
-              {{ delivery.estadoEntrega }}
-            </span>
+            <div class="delivery-meta">
+
+              @if (delivery.entregado_en) {
+                <small>
+                  {{ delivery.entregado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                </small>
+
+                <button
+                  type="button"
+                  class="link-button"
+                  (click)="toggleAnswers(delivery.id_actividad_estudiante)"
+                >
+                  {{
+                    expandedId() === delivery.id_actividad_estudiante
+                      ? 'Ocultar respuestas'
+                      : 'Ver respuestas'
+                  }}
+                </button>
+              }
+
+              <span
+                class="delivery-state"
+                [class.pending]="delivery.estadoEntrega === 'PENDIENTE'"
+                [class.delivered]="delivery.estadoEntrega === 'ENTREGADA'"
+              >
+                {{ delivery.estadoEntrega }}
+              </span>
+
+            </div>
+
+            @if (expandedId() === delivery.id_actividad_estudiante) {
+              <div class="answers">
+                @for (
+                  question of current.preguntas;
+                  track question.id_pregunta
+                ) {
+                  <div>
+                    <strong>
+                      {{ question.orden }}. {{ question.enunciado }}
+                    </strong>
+
+                    <p>{{ answerFor(delivery.respuestas, question.id_pregunta) }}</p>
+                  </div>
+                }
+              </div>
+            }
 
           </article>
 
@@ -276,13 +318,20 @@
         current.estado === 'ABIERTA'
       ) {
 
-        <button
-          type="button"
-          class="secondary-button"
-          (click)="editActivity()"
-        >
-          Editar actividad
-        </button>
+        @if (totalEntregadas() === 0) {
+          <button
+            type="button"
+            class="secondary-button"
+            (click)="editActivity()"
+          >
+            Editar actividad
+          </button>
+        } @else {
+          <div class="closed-note">
+            La actividad ya tiene entregas;
+            no puede editarse.
+          </div>
+        }
 
 
         <button

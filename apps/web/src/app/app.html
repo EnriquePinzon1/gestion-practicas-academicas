@@ -44,6 +44,14 @@
           </span>
         }
 
+        @if (
+          userRole() === 'ESTUDIANTE'
+        ) {
+          <span class="role-label">
+            Estudiante
+          </span>
+        }
+
       </div>
 
       <nav class="navigation">
@@ -145,6 +153,23 @@
     Actividades
   </a>
 
+
+        }
+
+        @if (
+          userRole() === 'ESTUDIANTE'
+        ) {
+
+          <a
+            routerLink="/mis-actividades"
+            routerLinkActive="active"
+          >
+            <span class="nav-icon">
+              ✎
+            </span>
+
+            Mis actividades
+          </a>
 
         }
 

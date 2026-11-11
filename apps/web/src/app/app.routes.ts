@@ -29,6 +29,12 @@ import { Institutions } from
 import { InstitutionDetail } from
   './pages/institutions/institution-detail';
 
+import { StudentActivities } from
+  './pages/student-activities/student-activities';
+
+import { StudentActivityDetail } from
+  './pages/student-activities/student-activity-detail';
+
 import { Groups } from './pages/groups/groups';
 import { GroupForm } from './pages/groups/group-form';
 import { GroupDetail } from './pages/groups/group-detail';
@@ -217,6 +223,22 @@ export const appRoutes: Route[] = [
   component: ActivityDetail,
   canActivate: [authGuard],
 },
+
+  // ==========================================
+  // ESTUDIANTE - ACTIVIDADES Y ENTREGAS
+  // ==========================================
+
+  {
+    path: 'mis-actividades',
+    component: StudentActivities,
+    canActivate: [authGuard],
+  },
+
+  {
+    path: 'mis-actividades/:id',
+    component: StudentActivityDetail,
+    canActivate: [authGuard],
+  },
 
   // ==========================================
   // RUTAS POR DEFECTO

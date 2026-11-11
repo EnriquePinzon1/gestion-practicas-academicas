@@ -11,6 +11,8 @@ import {
 
 import { FormsModule } from '@angular/forms';
 
+import { DatePipe } from '@angular/common';
+
 import { ApiService } from
   '../../core/services/api.service';
 
@@ -43,6 +45,23 @@ interface Student {
   codigo_estudiante?: string;
 }
 
+// Una fila por estudiante del snapshot actividad_estudiante
+interface Submission {
+  id_actividad_estudiante: number;
+  id_estudiante: number;
+  estado_entrega: 'PENDIENTE' | 'ENTREGADA';
+  id_entrega: number | null;
+  entregado_en: string | null;
+  entrega_actualizada_en: string | null;
+  nombres: string | null;
+  apellidos: string | null;
+  codigo_estudiante: string | null;
+  respuestas: {
+    id_pregunta: number;
+    contenido: string;
+  }[];
+}
+
 interface GroupDetail {
   id_grupo: number;
   nombre: string;
@@ -58,6 +77,7 @@ interface GroupDetail {
   standalone: true,
   imports: [
     FormsModule,
+    DatePipe,
   ],
   templateUrl: './activity-detail.html',
   styleUrl: './activity-detail.scss',
@@ -83,21 +103,45 @@ export class ActivityDetail {
       'TODOS'
     );
 
-  // CU05 todavía no registra entregas.
-  // Mientras no exista una entrega, el
-  // estudiante aparece como PENDIENTE.
-  deliveries = computed(() => {
-    const students =
-      this.group()?.integrantes ?? [];
+  submissions = signal<Submission[]>([]);
 
-    return students.map(
-      (student) => ({
-        ...student,
-        estadoEntrega:
-          'PENDIENTE' as const,
-      })
+  expandedId = signal<number | null>(null);
+
+  // Entregas según el snapshot actividad_estudiante
+  // (estudiantes del grupo al publicar la actividad).
+  // Los integrantes del grupo solo completan el nombre
+  // si User Service no lo devolvió (estudiante inactivo).
+  deliveries = computed(() => {
+    const members = new Map(
+      (this.group()?.integrantes ?? []).map(
+        (m) => [Number(m.id_estudiante), m]
+      )
     );
+
+    return this.submissions().map((s) => {
+      const member = members.get(
+        Number(s.id_estudiante)
+      );
+
+      return {
+        ...s,
+        nombres: s.nombres ?? member?.nombres,
+        apellidos: s.apellidos ?? member?.apellidos,
+        codigo_estudiante:
+          s.codigo_estudiante ??
+          member?.codigo_estudiante,
+        correo: member?.correo,
+        estadoEntrega: s.estado_entrega,
+      };
+    });
   });
+
+  totalEntregadas = computed(
+    () =>
+      this.submissions().filter(
+        (s) => s.estado_entrega === 'ENTREGADA'
+      ).length
+  );
 
   filteredDeliveries =
     computed(() => {
@@ -166,6 +210,19 @@ export class ActivityDetail {
 
       this.group.set(
         groupResponse.data
+      );
+
+      const submissionsResponse =
+        await this.api.get<{
+          data: {
+            estudiantes: Submission[];
+          };
+        }>(
+          `/activities/${idActividad}/submissions`
+        );
+
+      this.submissions.set(
+        submissionsResponse.data.estudiantes
       );
 
     } catch (error) {
@@ -282,6 +339,23 @@ export class ActivityDetail {
     return value
       ? value.substring(0, 5)
       : '-';
+  }
+
+  toggleAnswers(id: number) {
+    this.expandedId.set(
+      this.expandedId() === id ? null : id
+    );
+  }
+
+  answerFor(
+    respuestas: Submission['respuestas'],
+    idPregunta: number
+  ): string {
+    return (
+      respuestas.find(
+        (r) => r.id_pregunta === idPregunta
+      )?.contenido ?? 'Sin respuesta'
+    );
   }
 
   studentName(
