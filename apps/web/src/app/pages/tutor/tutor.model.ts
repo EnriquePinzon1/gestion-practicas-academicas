@@ -56,3 +56,25 @@ export function isCurrentAssignment(
     assignment.estado === 'EN_CURSO'
   );
 }
+
+// Bitácora del Tutor Receptor: observación fechada sobre el
+// desempeño del practicante en la institución.
+export interface TutorObservation {
+  id_observacion: number;
+  id_asignacion: number;
+  id_tutor: number;
+  fecha: string;
+  descripcion: string;
+  creado_en: string;
+  actualizado_en: string;
+  propia: boolean;
+}
+
+export interface TutorObservationsResponse {
+  data: TutorObservation[];
+  puede_registrar: boolean;
+  fecha_minima: string | null;
+  fecha_maxima: string;
+}
+
+export const MAX_OBSERVACION = 2000;

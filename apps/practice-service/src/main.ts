@@ -2581,6 +2581,343 @@ app.get(
   }
 );
 
+// ======================================================
+// TUTOR RECEPTOR - BITÁCORA DE OBSERVACIONES
+//
+// Registro propio del tutor por asignación: observaciones
+// fechadas sobre el desempeño del practicante en la
+// institución. Solo con la asignación EN_CURSO; fecha entre
+// fecha_inicio y hoy (America/Bogota). No se eliminan, solo
+// se corrigen (y solo las propias).
+// ======================================================
+
+const MAX_OBSERVACION = 2000;
+
+// Asignación del tutor con la fecha de hoy en Bogotá.
+// null si no existe o es de otro tutor.
+async function findTutorAssignment(
+  idTutor: number,
+  idAsignacion: number
+) {
+  const result = await pool.query(
+    `
+      SELECT
+        id_asignacion,
+        estado,
+        -- fecha_inicio se fija con CURRENT_DATE del servidor
+        -- (UTC), que puede ir un día adelante de Bogotá.
+        to_char(
+          LEAST(
+            fecha_inicio,
+            (NOW() AT TIME ZONE 'America/Bogota')::date
+          ),
+          'YYYY-MM-DD'
+        ) AS fecha_inicio,
+        to_char(
+          (NOW() AT TIME ZONE 'America/Bogota')::date,
+          'YYYY-MM-DD'
+        ) AS hoy
+      FROM practices.asignacion_practica
+      WHERE id_asignacion = $1
+        AND id_tutor = $2
+    `,
+    [idAsignacion, idTutor]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+function parseTutorAssignmentParams(req: express.Request) {
+  const idTutor = Number(req.params.idTutor);
+  const idAsignacion = Number(req.params.idAsignacion);
+
+  if (
+    !Number.isInteger(idTutor) ||
+    idTutor <= 0 ||
+    !Number.isInteger(idAsignacion) ||
+    idAsignacion <= 0
+  ) {
+    return null;
+  }
+
+  return { idTutor, idAsignacion };
+}
+
+// Valida fecha y descripción contra la asignación.
+// Devuelve el mensaje de error o los valores limpios.
+function validateObservation(
+  body: any,
+  assignment: { fecha_inicio: string | null; hoy: string }
+): { error: string } | { fecha: string; descripcion: string } {
+  const fecha =
+    typeof body?.fecha === 'string' ? body.fecha.trim() : '';
+
+  const descripcion =
+    typeof body?.descripcion === 'string'
+      ? body.descripcion.trim()
+      : '';
+
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(fecha) ||
+    Number.isNaN(Date.parse(fecha + 'T00:00:00Z')) ||
+    new Date(fecha + 'T00:00:00Z')
+      .toISOString()
+      .slice(0, 10) !== fecha
+  ) {
+    return { error: 'La fecha de la observación no es válida' };
+  }
+
+  if (fecha > assignment.hoy) {
+    return {
+      error: 'La fecha de la observación no puede ser futura',
+    };
+  }
+
+  if (assignment.fecha_inicio && fecha < assignment.fecha_inicio) {
+    return {
+      error:
+        'La fecha de la observación no puede ser anterior al inicio de la práctica',
+    };
+  }
+
+  if (!descripcion) {
+    return { error: 'La observación es obligatoria' };
+  }
+
+  if (descripcion.length > MAX_OBSERVACION) {
+    return {
+      error: `La observación no puede superar ${MAX_OBSERVACION} caracteres`,
+    };
+  }
+
+  return { fecha, descripcion };
+}
+
+const OBSERVATION_COLUMNS = `
+  id_observacion,
+  id_asignacion,
+  id_tutor,
+  to_char(fecha, 'YYYY-MM-DD') AS fecha,
+  descripcion,
+  creado_en,
+  actualizado_en
+`;
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/observations',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          SELECT ${OBSERVATION_COLUMNS}
+          FROM practices.observacion_tutor
+          WHERE id_asignacion = $1
+          ORDER BY fecha DESC, id_observacion DESC
+        `,
+        [params.idAsignacion]
+      );
+
+      return res.json({
+        data: result.rows.map((row) => ({
+          ...row,
+          propia: Number(row.id_tutor) === params.idTutor,
+        })),
+        puede_registrar: assignment.estado === 'EN_CURSO',
+        fecha_minima: assignment.fecha_inicio,
+        fecha_maxima: assignment.hoy,
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando observaciones del tutor:',
+        error
+      );
+
+      return res.status(500).json({
+        message: 'No fue posible consultar las observaciones',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/observations',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      if (assignment.estado !== 'EN_CURSO') {
+        return res.status(409).json({
+          message:
+            'Solo se registran observaciones mientras la práctica está en curso',
+        });
+      }
+
+      const values = validateObservation(req.body, assignment);
+
+      if ('error' in values) {
+        return res.status(400).json({ message: values.error });
+      }
+
+      const result = await pool.query(
+        `
+          INSERT INTO practices.observacion_tutor (
+            id_asignacion,
+            id_tutor,
+            fecha,
+            descripcion
+          )
+          VALUES ($1, $2, $3, $4)
+          RETURNING ${OBSERVATION_COLUMNS}
+        `,
+        [
+          params.idAsignacion,
+          params.idTutor,
+          values.fecha,
+          values.descripcion,
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Observación registrada correctamente',
+        data: { ...result.rows[0], propia: true },
+      });
+    } catch (error) {
+      console.error('Error registrando observación:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible registrar la observación',
+      });
+    }
+  }
+);
+
+app.put(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/observations/:idObservacion',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+    const idObservacion = Number(req.params.idObservacion);
+
+    if (
+      !params ||
+      !Number.isInteger(idObservacion) ||
+      idObservacion <= 0
+    ) {
+      return res.status(400).json({
+        message: 'Tutor, asignación u observación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      const current = await pool.query(
+        `
+          SELECT id_tutor
+          FROM practices.observacion_tutor
+          WHERE id_observacion = $1
+            AND id_asignacion = $2
+        `,
+        [idObservacion, params.idAsignacion]
+      );
+
+      if ((current.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Observación no encontrada',
+        });
+      }
+
+      if (Number(current.rows[0].id_tutor) !== params.idTutor) {
+        return res.status(403).json({
+          message:
+            'Solo puede corregir las observaciones que usted registró',
+        });
+      }
+
+      if (assignment.estado !== 'EN_CURSO') {
+        return res.status(409).json({
+          message:
+            'Las observaciones solo se pueden corregir mientras la práctica está en curso',
+        });
+      }
+
+      const values = validateObservation(req.body, assignment);
+
+      if ('error' in values) {
+        return res.status(400).json({ message: values.error });
+      }
+
+      const result = await pool.query(
+        `
+          UPDATE practices.observacion_tutor
+          SET
+            fecha = $1,
+            descripcion = $2,
+            actualizado_en = NOW()
+          WHERE id_observacion = $3
+          RETURNING ${OBSERVATION_COLUMNS}
+        `,
+        [values.fecha, values.descripcion, idObservacion]
+      );
+
+      return res.json({
+        message: 'Observación actualizada correctamente',
+        data: { ...result.rows[0], propia: true },
+      });
+    } catch (error) {
+      console.error('Error actualizando observación:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible actualizar la observación',
+      });
+    }
+  }
+);
+
 const port = process.env.PORT || 3335;
 
 const server = app.listen(port, () => {

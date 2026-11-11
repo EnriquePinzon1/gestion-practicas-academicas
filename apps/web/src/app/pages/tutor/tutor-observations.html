@@ -1,0 +1,131 @@
+<section class="panel section-gap">
+  <div class="panel-heading">
+    <h2>Bitácora del tutor</h2>
+    <p>
+      Observaciones sobre el desempeño del practicante en la
+      institución, en orden cronológico inverso.
+    </p>
+  </div>
+
+  <div class="observations-body">
+
+    @if (errorMessage()) {
+      <div class="alert error">{{ errorMessage() }}</div>
+    }
+
+    @if (successMessage()) {
+      <div class="alert success">{{ successMessage() }}</div>
+    }
+
+    @if (loading()) {
+      <p class="muted">Cargando observaciones...</p>
+    } @else {
+
+      @if (canRegister()) {
+        <form class="observation-form" (ngSubmit)="save()">
+          <label>
+            <span>Fecha</span>
+            <input
+              type="date"
+              name="fecha"
+              [min]="minDate() ?? ''"
+              [max]="maxDate()"
+              [ngModel]="fechaInput()"
+              (ngModelChange)="fechaInput.set($event)"
+            />
+          </label>
+
+          <label>
+            <span>
+              {{ editingId() ? 'Corregir observación' : 'Nueva observación' }}
+            </span>
+            <textarea
+              name="descripcion"
+              rows="3"
+              [maxlength]="maxLength"
+              placeholder="Puntualidad, actitud, tareas realizadas, aspectos por mejorar..."
+              [ngModel]="descripcionInput()"
+              (ngModelChange)="descripcionInput.set($event)"
+            ></textarea>
+          </label>
+
+          <div class="form-actions">
+            <small>{{ descripcionInput().length }} / {{ maxLength }}</small>
+
+            @if (editingId()) {
+              <button
+                type="button"
+                class="secondary-button"
+                [disabled]="saving()"
+                (click)="resetForm()"
+              >
+                Cancelar
+              </button>
+            }
+
+            <button
+              type="submit"
+              class="primary-button"
+              [class.ui-loading]="saving()"
+              [disabled]="saving()"
+            >
+              {{
+                saving()
+                  ? 'Guardando...'
+                  : editingId()
+                    ? 'Guardar corrección'
+                    : 'Registrar observación'
+              }}
+            </button>
+          </div>
+        </form>
+      } @else {
+        <div class="readonly-note">
+          Las observaciones se registran mientras la práctica
+          está <strong>en curso</strong>.
+        </div>
+      }
+
+      @if (observations().length === 0) {
+        <div class="empty-state compact">
+          <h3>Sin observaciones</h3>
+          <p>Aún no hay observaciones registradas.</p>
+        </div>
+      } @else {
+        <ol class="observation-list">
+          @for (o of observations(); track o.id_observacion) {
+            <li [class.editing]="editingId() === o.id_observacion">
+              <div class="observation-head">
+                <strong>{{ o.fecha | date: 'dd/MM/yyyy' : 'UTC' }}</strong>
+
+                <small>
+                  @if (wasEdited(o)) {
+                    Corregida {{ o.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                  } @else {
+                    Registrada {{ o.creado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                  }
+                  @if (!o.propia) {
+                    · otro tutor
+                  }
+                </small>
+
+                @if (canRegister() && o.propia) {
+                  <button
+                    type="button"
+                    class="link-button"
+                    [disabled]="saving()"
+                    (click)="edit(o)"
+                  >
+                    Corregir
+                  </button>
+                }
+              </div>
+
+              <p>{{ o.descripcion }}</p>
+            </li>
+          }
+        </ol>
+      }
+    }
+  </div>
+</section>

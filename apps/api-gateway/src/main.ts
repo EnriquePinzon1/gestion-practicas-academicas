@@ -2136,6 +2136,84 @@ app.get(
 );
 
 // ========================================================
+// TUTOR RECEPTOR - BITÁCORA DE OBSERVACIONES
+// El tutor sale del token; Practice Service valida que la
+// asignación sea suya (ajena → 404) y que esté EN_CURSO.
+// ========================================================
+
+function tutorObservationsPath(
+  res: Response,
+  idAsignacion: unknown
+) {
+  return (
+    '/api/internal/tutors/' +
+    res.locals.tutor.id_tutor +
+    '/assignments/' +
+    encodeURIComponent(String(idAsignacion)) +
+    '/observations'
+  );
+}
+
+app.get(
+  '/api/tutor/assignments/:id/observations',
+  requireAuth,
+  requireTutor,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      tutorObservationsPath(res, req.params.id),
+      { method: 'GET' },
+      'Error consultando observaciones del tutor:'
+    )
+);
+
+app.post(
+  '/api/tutor/assignments/:id/observations',
+  requireAuth,
+  requireTutor,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      tutorObservationsPath(res, req.params.id),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fecha: req.body?.fecha,
+          descripcion: req.body?.descripcion,
+        }),
+      },
+      'Error registrando observación del tutor:'
+    )
+);
+
+app.put(
+  '/api/tutor/assignments/:id/observations/:idObservacion',
+  requireAuth,
+  requireTutor,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      tutorObservationsPath(res, req.params.id) +
+        '/' +
+        encodeURIComponent(String(req.params.idObservacion)),
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fecha: req.body?.fecha,
+          descripcion: req.body?.descripcion,
+        }),
+      },
+      'Error actualizando observación del tutor:'
+    )
+);
+
+// ========================================================
 // ENTREGAS - ESTUDIANTE
 // El id del estudiante sale siempre del token, nunca del
 // cliente: solo puede ver y entregar sus actividades.
