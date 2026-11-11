@@ -14,6 +14,15 @@ import { Practices } from './pages/practices/practices';
 import { PracticeForm } from './pages/practices/practice-form';
 import { PracticeDetail } from './pages/practices/practice-detail';
 
+import { Assignments } from
+  './pages/assignments/assignments';
+
+import { AssignmentForm } from
+  './pages/assignments/assignment-form';
+
+import { AssignmentDetail } from
+  './pages/assignments/assignment-detail';
+
 import { Groups } from './pages/groups/groups';
 import { GroupForm } from './pages/groups/group-form';
 import { GroupDetail } from './pages/groups/group-detail';
@@ -106,6 +115,28 @@ export const appRoutes: Route[] = [
   {
     path: 'practicas/:id',
     component: PracticeDetail,
+    canActivate: [authGuard],
+  },
+
+  // ==========================================
+  // ASIGNACIONES INDIVIDUALES DE PRÁCTICA
+  // ==========================================
+
+  {
+    path: 'asignaciones',
+    component: Assignments,
+    canActivate: [authGuard],
+  },
+
+  {
+    path: 'asignaciones/nueva',
+    component: AssignmentForm,
+    canActivate: [authGuard],
+  },
+
+  {
+    path: 'asignaciones/:id',
+    component: AssignmentDetail,
     canActivate: [authGuard],
   },
 
