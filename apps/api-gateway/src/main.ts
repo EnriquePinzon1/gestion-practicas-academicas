@@ -856,6 +856,216 @@ app.patch(
   }
 );
 
+
+// ======================================================
+// ASIGNACIONES INDIVIDUALES DE PRÁCTICA
+// Solo Coordinador activo
+// ======================================================
+
+// Estudiantes disponibles para asignación
+app.get(
+  '/api/practice-assignment-options/students',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3334/api/internal/students/available'
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando estudiantes para asignaciones:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'User Service no disponible',
+      });
+    }
+  }
+);
+
+// Tutores receptores disponibles
+app.get(
+  '/api/practice-assignment-options/tutors',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3334/api/internal/tutors/available'
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando tutores receptores:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'User Service no disponible',
+      });
+    }
+  }
+);
+
+// Listar asignaciones
+app.get(
+  '/api/practice-assignments',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/practice-assignments'
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando asignaciones de práctica:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Consultar asignación por ID
+app.get(
+  '/api/practice-assignments/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/practice-assignments/' +
+          req.params.id
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error consultando asignación de práctica:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Crear asignación individual
+app.post(
+  '/api/practice-assignments',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/practice-assignments',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify(
+            req.body
+          ),
+        }
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error creando asignación de práctica:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+// Cambiar estado de asignación
+app.patch(
+  '/api/practice-assignments/:id/status',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/practice-assignments/' +
+          req.params.id +
+          '/status',
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify(
+            req.body
+          ),
+        }
+      );
+
+      const data = await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+    } catch (error) {
+      console.error(
+        'Error actualizando estado de asignación:',
+        error
+      );
+
+      return res.status(503).json({
+        message:
+          'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+
 // ======================================================
 // CU03 - GRUPOS DE PRÁCTICA
 // ======================================================

@@ -857,6 +857,56 @@ app.get('/api/internal/students/available', async (_req, res) => {
 });
 
 // ======================================================
+// DATOS INTERNOS PARA ASIGNACIONES DE PRÁCTICA
+// ======================================================
+
+// Tutores receptores activos
+app.get('/api/internal/tutors/available', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        t.id_tutor,
+        u.id_usuario,
+        u.nombres,
+        u.apellidos,
+        u.numero_documento,
+        u.correo,
+        t.cargo
+      FROM users.tutor_receptor t
+
+      INNER JOIN users.usuario u
+        ON u.id_usuario = t.id_usuario
+
+      INNER JOIN users.rol r
+        ON r.id_rol = u.id_rol
+
+      WHERE
+        r.nombre = 'TUTOR_RECEPTOR'
+        AND u.estado = 'ACTIVO'
+
+      ORDER BY
+        u.nombres,
+        u.apellidos
+    `);
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando tutores receptores disponibles:',
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar los tutores receptores disponibles',
+    });
+  }
+});
+
+
+// ======================================================
 // CU04 - DOCENTE POR AUTH USER
 // ======================================================
 

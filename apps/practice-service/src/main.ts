@@ -558,6 +558,652 @@ app.patch('/api/practices/:id/status', async (req, res) => {
 });
 
 // ======================================================
+// ASIGNACIONES INDIVIDUALES DE PRÁCTICA
+// ======================================================
+
+// ------------------------------------------------------
+// Listar asignaciones
+// ------------------------------------------------------
+
+app.get('/api/practice-assignments', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        a.id_asignacion,
+        a.id_estudiante,
+        a.id_practica,
+        p.nombre AS practica,
+        p.id_programa,
+        a.id_institucion,
+        i.nombre AS institucion,
+        a.id_tutor,
+        a.periodo_academico,
+        a.estado,
+        a.fecha_inicio,
+        a.fecha_fin,
+        a.creado_en,
+        a.actualizado_en
+
+      FROM practices.asignacion_practica a
+
+      INNER JOIN practices.practica p
+        ON p.id_practica = a.id_practica
+
+      INNER JOIN practices.institucion i
+        ON i.id_institucion = a.id_institucion
+
+      ORDER BY
+        a.creado_en DESC,
+        a.id_asignacion DESC
+    `);
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando asignaciones de práctica:',
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        'No fue posible consultar las asignaciones de práctica',
+    });
+  }
+});
+
+// ------------------------------------------------------
+// Consultar asignación por ID
+// ------------------------------------------------------
+
+app.get(
+  '/api/practice-assignments/:id',
+  async (req, res) => {
+    const idAsignacion = Number(req.params.id);
+
+    if (
+      !Number.isInteger(idAsignacion) ||
+      idAsignacion <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'El identificador de la asignación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT
+            a.id_asignacion,
+            a.id_estudiante,
+            a.id_practica,
+            p.nombre AS practica,
+            p.id_programa,
+            a.id_institucion,
+            i.nombre AS institucion,
+            a.id_tutor,
+            a.periodo_academico,
+            a.estado,
+            a.fecha_inicio,
+            a.fecha_fin,
+            a.creado_en,
+            a.actualizado_en
+
+          FROM practices.asignacion_practica a
+
+          INNER JOIN practices.practica p
+            ON p.id_practica = a.id_practica
+
+          INNER JOIN practices.institucion i
+            ON i.id_institucion = a.id_institucion
+
+          WHERE a.id_asignacion = $1
+        `,
+        [idAsignacion]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message:
+            'Asignación de práctica no encontrada',
+        });
+      }
+
+      return res.json({
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando asignación de práctica:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible consultar la asignación de práctica',
+      });
+    }
+  }
+);
+
+// ------------------------------------------------------
+// Crear asignación individual
+// ------------------------------------------------------
+
+app.post(
+  '/api/practice-assignments',
+  async (req, res) => {
+    const idEstudiante = Number(
+      req.body?.id_estudiante
+    );
+
+    const idPractica = Number(
+      req.body?.id_practica
+    );
+
+    const idInstitucion = Number(
+      req.body?.id_institucion
+    );
+
+    const idTutor =
+      req.body?.id_tutor === null ||
+      req.body?.id_tutor === undefined ||
+      req.body?.id_tutor === ''
+        ? null
+        : Number(req.body.id_tutor);
+
+    const periodoAcademico = String(
+      req.body?.periodo_academico ?? ''
+    ).trim();
+
+    if (
+      !Number.isInteger(idEstudiante) ||
+      idEstudiante <= 0 ||
+      !Number.isInteger(idPractica) ||
+      idPractica <= 0 ||
+      !Number.isInteger(idInstitucion) ||
+      idInstitucion <= 0 ||
+      !periodoAcademico
+    ) {
+      return res.status(400).json({
+        message:
+          'Estudiante, práctica, institución y periodo académico son obligatorios',
+      });
+    }
+
+    if (
+      idTutor !== null &&
+      (
+        !Number.isInteger(idTutor) ||
+        idTutor <= 0
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          'El Tutor Receptor seleccionado no es válido',
+      });
+    }
+
+    if (
+      !/^\d{4}-[12]$/.test(
+        periodoAcademico
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          'El periodo académico debe tener el formato AAAA-1 o AAAA-2',
+      });
+    }
+
+    try {
+      // ----------------------------------------------
+      // Validar práctica curricular
+      // ----------------------------------------------
+
+      const practiceResult =
+        await pool.query(
+          `
+            SELECT
+              id_practica,
+              id_programa,
+              estado
+            FROM practices.practica
+            WHERE id_practica = $1
+          `,
+          [idPractica]
+        );
+
+      if (
+        (practiceResult.rowCount ?? 0) === 0
+      ) {
+        return res.status(400).json({
+          message:
+            'La práctica académica seleccionada no existe',
+        });
+      }
+
+      const practica =
+        practiceResult.rows[0];
+
+      if (
+        practica.estado !== 'ACTIVA'
+      ) {
+        return res.status(400).json({
+          message:
+            'No es posible crear una asignación para una práctica cerrada',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar institución receptora
+      // ----------------------------------------------
+
+      const institutionResult =
+        await pool.query(
+          `
+            SELECT id_institucion
+            FROM practices.institucion
+            WHERE id_institucion = $1
+          `,
+          [idInstitucion]
+        );
+
+      if (
+        (institutionResult.rowCount ?? 0) === 0
+      ) {
+        return res.status(400).json({
+          message:
+            'La institución receptora seleccionada no existe',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar estudiante activo en User Service
+      // ----------------------------------------------
+
+      const studentsResponse =
+        await fetch(
+          'http://localhost:3334/api/internal/students/available'
+        );
+
+      if (!studentsResponse.ok) {
+        return res.status(503).json({
+          message:
+            'User Service no disponible',
+        });
+      }
+
+      const studentsBody: any =
+        await studentsResponse.json();
+
+      const estudiante =
+        (studentsBody.data ?? []).find(
+          (student: any) =>
+            Number(
+              student.id_estudiante
+            ) === idEstudiante
+        );
+
+      if (!estudiante) {
+        return res.status(400).json({
+          message:
+            'El estudiante seleccionado no está disponible',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar compatibilidad estudiante-práctica
+      // ----------------------------------------------
+
+      if (
+        Number(estudiante.id_programa) !==
+        Number(practica.id_programa)
+      ) {
+        return res.status(400).json({
+          message:
+            'El estudiante y la práctica académica pertenecen a programas diferentes',
+        });
+      }
+
+      // ----------------------------------------------
+      // Validar tutor receptor, si fue seleccionado
+      // ----------------------------------------------
+
+      if (idTutor !== null) {
+        const tutorsResponse =
+          await fetch(
+            'http://localhost:3334/api/internal/tutors/available'
+          );
+
+        if (!tutorsResponse.ok) {
+          return res.status(503).json({
+            message:
+              'User Service no disponible',
+          });
+        }
+
+        const tutorsBody: any =
+          await tutorsResponse.json();
+
+        const tutorExiste =
+          (tutorsBody.data ?? []).some(
+            (tutor: any) =>
+              Number(tutor.id_tutor) ===
+              idTutor
+          );
+
+        if (!tutorExiste) {
+          return res.status(400).json({
+            message:
+              'El Tutor Receptor seleccionado no está disponible',
+          });
+        }
+
+        const tutorInstitution =
+          await pool.query(
+            `
+              SELECT id_institucion_tutor
+              FROM practices.institucion_tutor
+              WHERE
+                id_institucion = $1
+                AND id_tutor = $2
+                AND activo = TRUE
+              LIMIT 1
+            `,
+            [
+              idInstitucion,
+              idTutor,
+            ]
+          );
+
+        if (
+          (tutorInstitution.rowCount ?? 0) ===
+          0
+        ) {
+          return res.status(400).json({
+            message:
+              'El Tutor Receptor seleccionado no está asociado a la institución receptora',
+          });
+        }
+      }
+
+      // ----------------------------------------------
+      // Validar asignación vigente duplicada
+      // ----------------------------------------------
+
+      const existingAssignment =
+        await pool.query(
+          `
+            SELECT id_asignacion
+            FROM practices.asignacion_practica
+            WHERE
+              id_estudiante = $1
+              AND id_practica = $2
+              AND periodo_academico = $3
+              AND estado IN (
+                'ASIGNADA',
+                'EN_CURSO'
+              )
+            LIMIT 1
+          `,
+          [
+            idEstudiante,
+            idPractica,
+            periodoAcademico,
+          ]
+        );
+
+      if (
+        (existingAssignment.rowCount ?? 0) >
+        0
+      ) {
+        return res.status(409).json({
+          message:
+            'El estudiante ya tiene una asignación vigente para esta práctica y periodo académico',
+        });
+      }
+
+      // ----------------------------------------------
+      // Crear asignación
+      // ----------------------------------------------
+
+      const result = await pool.query(
+        `
+          INSERT INTO practices.asignacion_practica (
+            id_estudiante,
+            id_practica,
+            id_institucion,
+            id_tutor,
+            periodo_academico
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5
+          )
+
+          RETURNING
+            id_asignacion,
+            id_estudiante,
+            id_practica,
+            id_institucion,
+            id_tutor,
+            periodo_academico,
+            estado,
+            fecha_inicio,
+            fecha_fin,
+            creado_en,
+            actualizado_en
+        `,
+        [
+          idEstudiante,
+          idPractica,
+          idInstitucion,
+          idTutor,
+          periodoAcademico,
+        ]
+      );
+
+      return res.status(201).json({
+        data: result.rows[0],
+        message:
+          'Asignación de práctica registrada correctamente',
+      });
+    } catch (error) {
+      if (
+        (error as { code?: string })
+          ?.code === '23505'
+      ) {
+        return res.status(409).json({
+          message:
+            'Ya existe una asignación vigente para el estudiante, práctica y periodo seleccionados',
+        });
+      }
+
+      console.error(
+        'Error creando asignación de práctica:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible registrar la asignación de práctica',
+      });
+    }
+  }
+);
+
+// ------------------------------------------------------
+// Cambiar estado de una asignación
+// ------------------------------------------------------
+
+app.patch(
+  '/api/practice-assignments/:id/status',
+  async (req, res) => {
+    const idAsignacion = Number(
+      req.params.id
+    );
+
+    const nuevoEstado = String(
+      req.body?.estado ?? ''
+    )
+      .trim()
+      .toUpperCase();
+
+    if (
+      !Number.isInteger(idAsignacion) ||
+      idAsignacion <= 0
+    ) {
+      return res.status(400).json({
+        message:
+          'El identificador de la asignación no es válido',
+      });
+    }
+
+    const estadosPermitidos = [
+      'EN_CURSO',
+      'FINALIZADA',
+      'CANCELADA',
+    ];
+
+    if (
+      !estadosPermitidos.includes(
+        nuevoEstado
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          'El estado solicitado no es válido',
+      });
+    }
+
+    try {
+      const currentResult =
+        await pool.query(
+          `
+            SELECT
+              id_asignacion,
+              estado
+            FROM practices.asignacion_practica
+            WHERE id_asignacion = $1
+          `,
+          [idAsignacion]
+        );
+
+      if (
+        (currentResult.rowCount ?? 0) === 0
+      ) {
+        return res.status(404).json({
+          message:
+            'Asignación de práctica no encontrada',
+        });
+      }
+
+      const estadoActual =
+        currentResult.rows[0].estado;
+
+      const transiciones: Record<
+        string,
+        string[]
+      > = {
+        ASIGNADA: [
+          'EN_CURSO',
+          'CANCELADA',
+        ],
+        EN_CURSO: [
+          'FINALIZADA',
+          'CANCELADA',
+        ],
+        FINALIZADA: [],
+        CANCELADA: [],
+      };
+
+      if (
+        !(
+          transiciones[estadoActual] ??
+          []
+        ).includes(nuevoEstado)
+      ) {
+        return res.status(409).json({
+          message:
+            `No es posible cambiar una asignación de ${estadoActual} a ${nuevoEstado}`,
+        });
+      }
+
+      const result = await pool.query(
+        `
+          UPDATE practices.asignacion_practica
+
+SET
+  estado = $1::VARCHAR(20),
+
+  fecha_inicio =
+    CASE
+      WHEN $1::VARCHAR(20) = 'EN_CURSO'
+      THEN COALESCE(
+        fecha_inicio,
+        CURRENT_DATE
+      )
+      ELSE fecha_inicio
+    END,
+
+  fecha_fin =
+    CASE
+      WHEN $1::VARCHAR(20) = 'FINALIZADA'
+      THEN COALESCE(
+        fecha_fin,
+        CURRENT_DATE
+      )
+      ELSE fecha_fin
+    END,
+
+  actualizado_en = NOW()
+
+WHERE id_asignacion = $2
+
+          RETURNING
+            id_asignacion,
+            id_estudiante,
+            id_practica,
+            id_institucion,
+            id_tutor,
+            periodo_academico,
+            estado,
+            fecha_inicio,
+            fecha_fin,
+            actualizado_en
+        `,
+        [
+          nuevoEstado,
+          idAsignacion,
+        ]
+      );
+
+      return res.json({
+        data: result.rows[0],
+        message:
+          'Estado de la asignación actualizado correctamente',
+      });
+    } catch (error) {
+      console.error(
+        'Error actualizando estado de asignación:',
+        error
+      );
+
+      return res.status(500).json({
+        message:
+          'No fue posible actualizar el estado de la asignación',
+      });
+    }
+  }
+);
+
+
+// ======================================================
 // CU03 - GRUPOS DE PRÁCTICA
 // ======================================================
 
