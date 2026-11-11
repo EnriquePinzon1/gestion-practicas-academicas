@@ -78,3 +78,43 @@ export interface TutorObservationsResponse {
 }
 
 export const MAX_OBSERVACION = 2000;
+
+// Evaluación final del Tutor Receptor (una por asignación).
+export interface TutorEvaluation {
+  id_evaluacion: number;
+  id_asignacion: number;
+  id_tutor: number;
+  calificacion: number;
+  concepto: string;
+  recomienda_aprobacion: boolean;
+  creado_en: string;
+  actualizado_en: string;
+}
+
+export interface TutorEvaluationResponse {
+  data: TutorEvaluation | null;
+  puede_evaluar: boolean;
+}
+
+// Bitácora + evaluación en solo lectura (Coordinador y
+// Docente Asesor). Para el docente incluye la asignación
+// enlazada al grupo; data null si el estudiante no tiene
+// asignación para esa práctica y período.
+export interface TutorRecord {
+  asignacion?: {
+    id_asignacion: number;
+    id_tutor: number | null;
+    estado: string;
+    fecha_inicio: string | null;
+    fecha_fin: string | null;
+    institucion: string;
+  };
+  tutor: {
+    id_tutor: number;
+    nombres: string | null;
+    apellidos: string | null;
+    cargo: string | null;
+  } | null;
+  observaciones: Omit<TutorObservation, 'propia'>[];
+  evaluacion: TutorEvaluation | null;
+}

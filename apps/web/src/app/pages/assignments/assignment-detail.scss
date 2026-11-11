@@ -250,3 +250,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+// Registro del tutor receptor, alineado con la tarjeta.
+.tutor-record {
+  display: block;
+  max-width: 980px;
+  margin: 24px auto 0;
+}

@@ -14,12 +14,13 @@ import { studentName } from '../follow-up/follow-up.model';
 import { FollowUpTimeline } from '../follow-up/follow-up-timeline';
 
 import { TutorObservations } from './tutor-observations';
+import { TutorEvaluation } from './tutor-evaluation';
 
 import { TutorAssignmentDetail as Detail } from './tutor.model';
 
 // Detalle de un practicante para el Tutor Receptor:
-// datos de la asignación, bitácora propia del tutor y
-// seguimiento académico en solo lectura (sin respuestas
+// datos de la asignación, bitácora y evaluación final del
+// tutor, y seguimiento académico en solo lectura (sin respuestas
 // ni evidencias).
 @Component({
   selector: 'app-tutor-assignment-detail',
@@ -28,6 +29,7 @@ import { TutorAssignmentDetail as Detail } from './tutor.model';
     DatePipe,
     FollowUpTimeline,
     TutorObservations,
+    TutorEvaluation,
   ],
   templateUrl: './tutor-assignment-detail.html',
   styleUrls: [

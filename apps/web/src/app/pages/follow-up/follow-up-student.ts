@@ -10,14 +10,16 @@ import {
 } from './follow-up.model';
 
 import { FollowUpTimeline } from './follow-up-timeline';
+import { TutorRecordView } from '../tutor/tutor-record-view';
 
 // Historial de seguimiento de un estudiante en un grupo:
 // todas las actividades que recibió (snapshot), con su
-// entrega, evidencias y retroalimentación.
+// entrega, evidencias y retroalimentación, más el registro
+// del Tutor Receptor (bitácora y evaluación final).
 @Component({
   selector: 'app-follow-up-student',
   standalone: true,
-  imports: [FollowUpTimeline],
+  imports: [FollowUpTimeline, TutorRecordView],
   templateUrl: './follow-up-student.html',
   styleUrls: [
     './follow-up.scss',
@@ -80,6 +82,13 @@ export class FollowUpStudent {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  tutorRecordEndpoint(): string {
+    return (
+      `/teacher/follow-up/groups/${this.idGrupo}` +
+      `/students/${this.idEstudiante}/tutor-record`
+    );
   }
 
   back() {

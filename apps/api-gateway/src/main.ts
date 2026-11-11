@@ -2025,6 +2025,28 @@ app.get(
     )
 );
 
+// Bitácora y evaluación final del Tutor Receptor sobre un
+// estudiante del grupo (solo lectura). Practice Service
+// valida que el grupo sea del docente (ajeno → 404).
+app.get(
+  '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante/tutor-record',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/internal/teachers/' +
+        res.locals.teacher.id_docente +
+        '/groups/' +
+        encodeURIComponent(String(req.params.idGrupo)) +
+        '/students/' +
+        encodeURIComponent(String(req.params.idEstudiante)) +
+        '/tutor-record',
+      { method: 'GET' },
+      'Error consultando registro del tutor para el docente:'
+    )
+);
+
 // ========================================================
 // TUTOR RECEPTOR - PRACTICANTES A CARGO
 // Solo asignaciones donde el tutor del token figura como
@@ -2141,16 +2163,20 @@ app.get(
 // asignación sea suya (ajena → 404) y que esté EN_CURSO.
 // ========================================================
 
-function tutorObservationsPath(
+// Ruta interna de Practice Service para una asignación
+// del tutor del token: .../assignments/:id/<recurso>.
+function tutorAssignmentPath(
   res: Response,
-  idAsignacion: unknown
+  idAsignacion: unknown,
+  resource: 'observations' | 'evaluation'
 ) {
   return (
     '/api/internal/tutors/' +
     res.locals.tutor.id_tutor +
     '/assignments/' +
     encodeURIComponent(String(idAsignacion)) +
-    '/observations'
+    '/' +
+    resource
   );
 }
 
@@ -2161,7 +2187,7 @@ app.get(
   (req, res) =>
     forwardToPracticeService(
       res,
-      tutorObservationsPath(res, req.params.id),
+      tutorAssignmentPath(res, req.params.id, 'observations'),
       { method: 'GET' },
       'Error consultando observaciones del tutor:'
     )
@@ -2174,7 +2200,7 @@ app.post(
   (req, res) =>
     forwardToPracticeService(
       res,
-      tutorObservationsPath(res, req.params.id),
+      tutorAssignmentPath(res, req.params.id, 'observations'),
       {
         method: 'POST',
         headers: {
@@ -2196,7 +2222,7 @@ app.put(
   (req, res) =>
     forwardToPracticeService(
       res,
-      tutorObservationsPath(res, req.params.id) +
+      tutorAssignmentPath(res, req.params.id, 'observations') +
         '/' +
         encodeURIComponent(String(req.params.idObservacion)),
       {
@@ -2210,6 +2236,60 @@ app.put(
         }),
       },
       'Error actualizando observación del tutor:'
+    )
+);
+
+// Evaluación final del tutor (una por asignación).
+app.get(
+  '/api/tutor/assignments/:id/evaluation',
+  requireAuth,
+  requireTutor,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      tutorAssignmentPath(res, req.params.id, 'evaluation'),
+      { method: 'GET' },
+      'Error consultando evaluación del tutor:'
+    )
+);
+
+app.put(
+  '/api/tutor/assignments/:id/evaluation',
+  requireAuth,
+  requireTutor,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      tutorAssignmentPath(res, req.params.id, 'evaluation'),
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          calificacion: req.body?.calificacion,
+          concepto: req.body?.concepto,
+          recomienda_aprobacion: req.body?.recomienda_aprobacion,
+        }),
+      },
+      'Error guardando evaluación del tutor:'
+    )
+);
+
+// Coordinador: bitácora y evaluación del tutor de una
+// asignación (solo lectura).
+app.get(
+  '/api/practice-assignments/:id/tutor-record',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/practice-assignments/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/tutor-record',
+      { method: 'GET' },
+      'Error consultando registro del tutor:'
     )
 );
 

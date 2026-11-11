@@ -1,0 +1,125 @@
+<section class="panel section-gap">
+  <div class="panel-heading">
+    <h2>Evaluación final</h2>
+    <p>
+      Concepto de la institución sobre el practicante. Es
+      requisito para que el coordinador finalice la práctica.
+    </p>
+  </div>
+
+  <div class="observations-body">
+
+    @if (errorMessage()) {
+      <div class="alert error">{{ errorMessage() }}</div>
+    }
+
+    @if (successMessage()) {
+      <div class="alert success">{{ successMessage() }}</div>
+    }
+
+    @if (loading()) {
+      <p class="muted">Cargando evaluación...</p>
+    } @else if (canEvaluate()) {
+
+      <form class="observation-form evaluation-form" (ngSubmit)="save()">
+        <label>
+          <span>Calificación (0.0 – 5.0)</span>
+          <input
+            type="text"
+            name="calificacion"
+            inputmode="decimal"
+            maxlength="3"
+            placeholder="Ej. 4.5"
+            [ngModel]="gradeInput()"
+            (ngModelChange)="gradeInput.set($event)"
+          />
+        </label>
+
+        <label>
+          <span>Concepto</span>
+          <textarea
+            name="concepto"
+            rows="4"
+            [maxlength]="maxLength"
+            placeholder="Desempeño general, competencias demostradas, aspectos por fortalecer..."
+            [ngModel]="conceptoInput()"
+            (ngModelChange)="conceptoInput.set($event)"
+          ></textarea>
+        </label>
+
+        <fieldset class="recommend">
+          <legend>¿Recomienda aprobar la práctica?</legend>
+
+          <label class="choice">
+            <input
+              type="radio"
+              name="recomienda"
+              [checked]="recommendInput() === true"
+              (change)="recommendInput.set(true)"
+            />
+            Sí, recomiendo aprobar
+          </label>
+
+          <label class="choice">
+            <input
+              type="radio"
+              name="recomienda"
+              [checked]="recommendInput() === false"
+              (change)="recommendInput.set(false)"
+            />
+            No recomiendo aprobar
+          </label>
+        </fieldset>
+
+        <div class="form-actions">
+          <small>
+            @if (evaluation(); as e) {
+              Última actualización
+              {{ e.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}
+            } @else {
+              {{ conceptoInput().length }} / {{ maxLength }}
+            }
+          </small>
+
+          <button
+            type="submit"
+            class="primary-button"
+            [class.ui-loading]="saving()"
+            [disabled]="saving()"
+          >
+            {{
+              saving()
+                ? 'Guardando...'
+                : evaluation()
+                  ? 'Guardar corrección'
+                  : 'Registrar evaluación'
+            }}
+          </button>
+        </div>
+      </form>
+
+    } @else if (evaluation(); as e) {
+
+      <div class="evaluation-result">
+        <div class="grade">
+          <span>Calificación</span>
+          <strong>{{ e.calificacion.toFixed(1) }}</strong>
+        </div>
+        <div class="verdict" [class.negative]="!e.recomienda_aprobacion">
+          {{ e.recomienda_aprobacion ? 'Recomienda aprobar' : 'No recomienda aprobar' }}
+        </div>
+      </div>
+      <p class="concept">{{ e.concepto }}</p>
+      <small class="muted">
+        Registrada {{ e.creado_en | date: 'dd/MM/yyyy, HH:mm' }}
+        · La práctica ya no está en curso; la evaluación es definitiva.
+      </small>
+
+    } @else {
+      <div class="readonly-note">
+        La evaluación final se registra mientras la práctica
+        está <strong>en curso</strong>.
+      </div>
+    }
+  </div>
+</section>

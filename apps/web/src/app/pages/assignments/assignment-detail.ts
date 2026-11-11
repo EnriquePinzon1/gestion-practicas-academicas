@@ -21,11 +21,12 @@ import {
   nombreEstudiante,
   nombreTutor,
 } from './assignment.model';
+import { TutorRecordView } from '../tutor/tutor-record-view';
 
 @Component({
   selector: 'app-assignment-detail',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, TutorRecordView],
   templateUrl: './assignment-detail.html',
   styleUrl: './assignment-detail.scss',
 })

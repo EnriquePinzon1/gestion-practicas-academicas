@@ -119,5 +119,10 @@
         · Última actualización {{ a.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}
       </div>
     </div>
+
+    <app-tutor-record-view
+      class="tutor-record"
+      [endpoint]="'/practice-assignments/' + a.id_asignacion + '/tutor-record'"
+    />
   }
 </div>

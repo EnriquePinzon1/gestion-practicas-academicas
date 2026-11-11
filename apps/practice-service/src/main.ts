@@ -1460,7 +1460,8 @@ app.patch(
           `
             SELECT
               id_asignacion,
-              estado
+              estado,
+              id_tutor
             FROM practices.asignacion_practica
             WHERE id_asignacion = $1
           `,
@@ -1504,6 +1505,19 @@ app.patch(
         return res.status(409).json({
           message:
             `No es posible cambiar una asignación de ${estadoActual} a ${nuevoEstado}`,
+        });
+      }
+
+      // Con tutor, la práctica no se cierra sin el concepto
+      // de la institución (evaluación final del tutor).
+      if (
+        nuevoEstado === 'FINALIZADA' &&
+        currentResult.rows[0].id_tutor !== null &&
+        !(await findEvaluation(idAsignacion))
+      ) {
+        return res.status(409).json({
+          message:
+            'El Tutor Receptor debe registrar la evaluación final antes de finalizar la práctica',
         });
       }
 
@@ -2913,6 +2927,378 @@ app.put(
 
       return res.status(500).json({
         message: 'No fue posible actualizar la observación',
+      });
+    }
+  }
+);
+
+// ======================================================
+// TUTOR RECEPTOR - EVALUACIÓN FINAL
+//
+// Concepto de la institución sobre el practicante: una por
+// asignación. Se registra y corrige mientras la asignación
+// está EN_CURSO; al finalizar queda fija. Sin ella, una
+// asignación con tutor no puede pasar a FINALIZADA.
+// ======================================================
+
+const EVALUATION_COLUMNS = `
+  id_evaluacion,
+  id_asignacion,
+  id_tutor,
+  calificacion::float AS calificacion,
+  concepto,
+  recomienda_aprobacion,
+  creado_en,
+  actualizado_en
+`;
+
+async function findEvaluation(idAsignacion: number) {
+  const result = await pool.query(
+    `
+      SELECT ${EVALUATION_COLUMNS}
+      FROM practices.evaluacion_tutor
+      WHERE id_asignacion = $1
+    `,
+    [idAsignacion]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+app.get(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/evaluation',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      return res.json({
+        data: await findEvaluation(params.idAsignacion),
+        puede_evaluar: assignment.estado === 'EN_CURSO',
+      });
+    } catch (error) {
+      console.error('Error consultando evaluación del tutor:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible consultar la evaluación',
+      });
+    }
+  }
+);
+
+app.put(
+  '/api/internal/tutors/:idTutor/assignments/:idAsignacion/evaluation',
+  async (req, res) => {
+    const params = parseTutorAssignmentParams(req);
+
+    if (!params) {
+      return res.status(400).json({
+        message: 'Tutor o asignación no válidos',
+      });
+    }
+
+    // Calificación 0.0–5.0 con máximo un decimal.
+    const rawGrade = req.body?.calificacion;
+    const calificacion =
+      typeof rawGrade === 'number' ? rawGrade : NaN;
+
+    const concepto =
+      typeof req.body?.concepto === 'string'
+        ? req.body.concepto.trim()
+        : '';
+
+    const recomienda = req.body?.recomienda_aprobacion;
+
+    if (
+      !Number.isFinite(calificacion) ||
+      calificacion < 0 ||
+      calificacion > 5 ||
+      Math.round(calificacion * 10) !== calificacion * 10
+    ) {
+      return res.status(400).json({
+        message:
+          'La calificación debe estar entre 0.0 y 5.0 con máximo un decimal',
+      });
+    }
+
+    if (!concepto) {
+      return res.status(400).json({
+        message: 'El concepto del tutor es obligatorio',
+      });
+    }
+
+    if (concepto.length > MAX_OBSERVACION) {
+      return res.status(400).json({
+        message: `El concepto no puede superar ${MAX_OBSERVACION} caracteres`,
+      });
+    }
+
+    if (typeof recomienda !== 'boolean') {
+      return res.status(400).json({
+        message: 'Indique si recomienda aprobar la práctica',
+      });
+    }
+
+    try {
+      const assignment = await findTutorAssignment(
+        params.idTutor,
+        params.idAsignacion
+      );
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: 'Asignación no encontrada',
+        });
+      }
+
+      if (assignment.estado !== 'EN_CURSO') {
+        return res.status(409).json({
+          message:
+            'La evaluación solo se registra o corrige mientras la práctica está en curso',
+        });
+      }
+
+      // xmax = 0 identifica la fila recién insertada.
+      const result = await pool.query(
+        `
+          INSERT INTO practices.evaluacion_tutor (
+            id_asignacion,
+            id_tutor,
+            calificacion,
+            concepto,
+            recomienda_aprobacion
+          )
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (id_asignacion) DO UPDATE
+          SET
+            id_tutor = EXCLUDED.id_tutor,
+            calificacion = EXCLUDED.calificacion,
+            concepto = EXCLUDED.concepto,
+            recomienda_aprobacion = EXCLUDED.recomienda_aprobacion,
+            actualizado_en = NOW()
+          RETURNING ${EVALUATION_COLUMNS}, (xmax = 0) AS creada
+        `,
+        [
+          params.idAsignacion,
+          params.idTutor,
+          calificacion,
+          concepto,
+          recomienda,
+        ]
+      );
+
+      const { creada, ...data } = result.rows[0];
+
+      return res.status(creada ? 201 : 200).json({
+        message: creada
+          ? 'Evaluación final registrada correctamente'
+          : 'Evaluación final actualizada correctamente',
+        data,
+      });
+    } catch (error) {
+      console.error('Error guardando evaluación del tutor:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible guardar la evaluación',
+      });
+    }
+  }
+);
+
+// ======================================================
+// REGISTRO DEL TUTOR (solo lectura)
+//
+// Bitácora + evaluación final de una asignación, con el
+// nombre del tutor, para el Coordinador y el Docente Asesor.
+// ======================================================
+
+async function loadTutorRecord(assignment: {
+  id_asignacion: number;
+  id_tutor: number | null;
+}) {
+  const [observations, evaluation] = await Promise.all([
+    pool.query(
+      `
+        SELECT ${OBSERVATION_COLUMNS}
+        FROM practices.observacion_tutor
+        WHERE id_asignacion = $1
+        ORDER BY fecha DESC, id_observacion DESC
+      `,
+      [assignment.id_asignacion]
+    ),
+    findEvaluation(assignment.id_asignacion),
+  ]);
+
+  let tutor: any = null;
+
+  if (assignment.id_tutor) {
+    try {
+      tutor =
+        (await fetchAvailableTutors()).get(
+          Number(assignment.id_tutor)
+        ) ?? null;
+    } catch (error) {
+      console.error('No fue posible consultar el tutor:', error);
+    }
+  }
+
+  return {
+    tutor: assignment.id_tutor
+      ? {
+          id_tutor: Number(assignment.id_tutor),
+          nombres: tutor?.nombres ?? null,
+          apellidos: tutor?.apellidos ?? null,
+          cargo: tutor?.cargo ?? null,
+        }
+      : null,
+    observaciones: observations.rows,
+    evaluacion: evaluation,
+  };
+}
+
+// Coordinador: registro del tutor de una asignación.
+app.get(
+  '/api/practice-assignments/:id/tutor-record',
+  async (req, res) => {
+    const idAsignacion = Number(req.params.id);
+
+    if (!Number.isInteger(idAsignacion) || idAsignacion <= 0) {
+      return res.status(400).json({
+        message: 'El identificador de la asignación no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          SELECT id_asignacion, id_tutor
+          FROM practices.asignacion_practica
+          WHERE id_asignacion = $1
+        `,
+        [idAsignacion]
+      );
+
+      if ((result.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Asignación de práctica no encontrada',
+        });
+      }
+
+      return res.json({
+        data: await loadTutorRecord(result.rows[0]),
+      });
+    } catch (error) {
+      console.error('Error consultando registro del tutor:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible consultar el registro del tutor',
+      });
+    }
+  }
+);
+
+// Docente asesor: registro del tutor sobre un estudiante de
+// su grupo. La asignación es la de la misma práctica +
+// período del grupo (si hay varias, la no cancelada más
+// reciente). Grupo ajeno → 404.
+app.get(
+  '/api/internal/teachers/:idDocente/groups/:idGrupo/students/:idEstudiante/tutor-record',
+  async (req, res) => {
+    const idDocente = Number(req.params.idDocente);
+    const idGrupo = Number(req.params.idGrupo);
+    const idEstudiante = Number(req.params.idEstudiante);
+
+    if (
+      ![idDocente, idGrupo, idEstudiante].every(
+        (id) => Number.isInteger(id) && id > 0
+      )
+    ) {
+      return res.status(400).json({
+        message: 'Docente, grupo o estudiante no válidos',
+      });
+    }
+
+    try {
+      const group = await pool.query(
+        `
+          SELECT id_practica, periodo_academico
+          FROM practices.grupo
+          WHERE id_grupo = $1
+            AND id_docente = $2
+        `,
+        [idGrupo, idDocente]
+      );
+
+      if ((group.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'Grupo no encontrado',
+        });
+      }
+
+      const assignment = await pool.query(
+        `
+          SELECT
+            a.id_asignacion,
+            a.id_tutor,
+            a.estado,
+            a.fecha_inicio,
+            a.fecha_fin,
+            i.nombre AS institucion
+          FROM practices.asignacion_practica a
+          INNER JOIN practices.institucion i
+            ON i.id_institucion = a.id_institucion
+          WHERE a.id_estudiante = $1
+            AND a.id_practica = $2
+            AND a.periodo_academico = $3
+          ORDER BY
+            (a.estado <> 'CANCELADA') DESC,
+            a.id_asignacion DESC
+          LIMIT 1
+        `,
+        [
+          idEstudiante,
+          group.rows[0].id_practica,
+          group.rows[0].periodo_academico,
+        ]
+      );
+
+      // Sin asignación no hay registro del tutor; no es error.
+      if ((assignment.rowCount ?? 0) === 0) {
+        return res.json({ data: null });
+      }
+
+      const row = assignment.rows[0];
+
+      return res.json({
+        data: {
+          asignacion: row,
+          ...(await loadTutorRecord(row)),
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando registro del tutor para el docente:',
+        error
+      );
+
+      return res.status(500).json({
+        message: 'No fue posible consultar el registro del tutor',
       });
     }
   }
