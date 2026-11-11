@@ -115,6 +115,42 @@
           </div>
         }
       </form>
+
+      <section class="evidences">
+        <div class="ev-head">
+          <h2>Evidencias</h2>
+          <small>{{ a.evidencias.length }} / {{ maxEvidencias }}</small>
+        </div>
+
+        @if (a.puede_entregar && !a.id_entrega) {
+          <div class="note">
+            Registra tus respuestas para poder adjuntar evidencias.
+          </div>
+        } @else {
+          <app-evidence-list
+            [evidencias]="a.evidencias"
+            [canRemove]="a.puede_entregar"
+            [busyId]="busyEvidence()"
+            (download)="downloadEvidence($event)"
+            (remove)="removeEvidence($event)"
+          />
+        }
+
+        @if (canAddEvidence()) {
+          <label class="upload" [class.disabled]="uploading()">
+            <input
+              type="file"
+              [accept]="evidenceAccept"
+              [disabled]="uploading() || saving()"
+              (change)="uploadEvidence($event)"
+            />
+            {{ uploading() ? 'Subiendo archivo...' : 'Adjuntar archivo' }}
+          </label>
+          <small class="hint">
+            {{ evidenceFormats }}. Máximo 10 MB por archivo.
+          </small>
+        }
+      </section>
     </div>
   }
 </div>

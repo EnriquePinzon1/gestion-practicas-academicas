@@ -16,6 +16,12 @@ import { DatePipe } from '@angular/common';
 import { ApiService } from
   '../../core/services/api.service';
 
+import { EvidenceList } from
+  '../student-activities/evidence-list';
+
+import { Evidencia } from
+  '../student-activities/evidence.model';
+
 interface Question {
   id_pregunta: number;
   enunciado: string;
@@ -60,6 +66,7 @@ interface Submission {
     id_pregunta: number;
     contenido: string;
   }[];
+  evidencias: Evidencia[];
 }
 
 interface GroupDetail {
@@ -78,6 +85,7 @@ interface GroupDetail {
   imports: [
     FormsModule,
     DatePipe,
+    EvidenceList,
   ],
   templateUrl: './activity-detail.html',
   styleUrl: './activity-detail.scss',
@@ -345,6 +353,33 @@ export class ActivityDetail {
     this.expandedId.set(
       this.expandedId() === id ? null : id
     );
+  }
+
+  // URL firmada de corta duración, pedida al descargar
+  async downloadEvidence(ev: Evidencia) {
+    const current = this.activity();
+
+    if (!current) {
+      return;
+    }
+
+    this.errorMessage.set('');
+
+    try {
+      const response = await this.api.get<{
+        data: { url: string };
+      }>(
+        `/activities/${current.id_actividad}/evidences/${ev.id_evidencia}/url`
+      );
+
+      window.location.assign(response.data.url);
+    } catch (error) {
+      this.errorMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible descargar la evidencia.'
+      );
+    }
   }
 
   answerFor(

@@ -1,6 +1,14 @@
 import 'dotenv/config';
 import express from 'express';
 import { pool } from './database/database';
+import { randomUUID } from 'crypto';
+import { EVIDENCE_BUCKET, storage } from './storage/storage';
+import {
+  ALLOWED_FORMATS_LABEL,
+  MAX_EVIDENCE_BYTES,
+  detectEvidenceType,
+  sanitizeFileName,
+} from './storage/file-type';
 
 const app = express();
 
@@ -1196,10 +1204,16 @@ app.get(
         ]
       );
 
+      const evidences = actividad.id_entrega
+        ? await listEvidences([actividad.id_entrega])
+        : new Map<number, any[]>();
+
       return res.json({
         data: {
           ...withPermissions(actividad),
           preguntas: questions.rows,
+          evidencias:
+            evidences.get(actividad.id_entrega) ?? [],
         },
       });
     } catch (error) {
@@ -1573,6 +1587,12 @@ app.get(
         );
       }
 
+      const evidences = await listEvidences(
+        rows.rows
+          .map((row) => row.id_entrega)
+          .filter(Boolean)
+      );
+
       const data = rows.rows.map((row) => {
         const student = students.get(
           Number(row.id_estudiante)
@@ -1586,6 +1606,9 @@ app.get(
             student?.codigo_estudiante ?? null,
           respuestas: row.id_entrega
             ? answersBySubmission.get(row.id_entrega) ?? []
+            : [],
+          evidencias: row.id_entrega
+            ? evidences.get(row.id_entrega) ?? []
             : [],
         };
       });
@@ -1614,6 +1637,571 @@ app.get(
       });
     }
   }
+);
+
+// ======================================================
+// EVIDENCIAS DE ENTREGA
+//
+// Archivos adjuntos a una entrega existente, guardados en
+// el bucket privado "evidencias" de Supabase Storage.
+// Reglas: dueño de la entrega, actividad ABIERTA y en
+// plazo, máximo 5 por entrega, 10 MB, tipo validado por
+// contenido. Descarga con URL firmada de corta duración.
+// ======================================================
+
+const MAX_EVIDENCES_PER_SUBMISSION = 5;
+const SIGNED_URL_SECONDS = 120;
+
+// Evidencias agrupadas por id_entrega
+async function listEvidences(
+  submissionIds: number[],
+): Promise<Map<number, any[]>> {
+  const grouped = new Map<number, any[]>();
+
+  if (submissionIds.length === 0) {
+    return grouped;
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        id_evidencia,
+        id_entrega,
+        nombre_archivo,
+        tipo_mime,
+        tamano_bytes,
+        subido_en
+      FROM activities.evidencia
+      WHERE id_entrega = ANY($1::int[])
+      ORDER BY subido_en ASC
+    `,
+    [submissionIds],
+  );
+
+  for (const row of result.rows) {
+    const list = grouped.get(row.id_entrega) ?? [];
+    list.push(row);
+    grouped.set(row.id_entrega, list);
+  }
+
+  return grouped;
+}
+
+// Sin strictNullChecks la discriminación por literal
+// booleano no estrecha el tipo; se usa el operador "in".
+type LockResult =
+  { idEntrega: number } | { error: { status: number; message: string } };
+
+// Bloquea la actividad asignada del estudiante y su
+// entrega, y verifica que aún se pueda modificar.
+// Debe llamarse dentro de una transacción.
+async function lockEditableSubmission(
+  client: any,
+  idEstudiante: number,
+  idActividadEstudiante: number,
+): Promise<LockResult> {
+  const assigned = await client.query(
+    `
+      SELECT
+        ae.id_actividad,
+        en.id_entrega
+      FROM activities.actividad_estudiante ae
+      LEFT JOIN activities.entrega en
+        ON en.id_actividad_estudiante =
+           ae.id_actividad_estudiante
+      WHERE ae.id_actividad_estudiante = $1
+        AND ae.id_estudiante = $2
+      FOR UPDATE OF ae
+    `,
+    [idActividadEstudiante, idEstudiante],
+  );
+
+  if ((assigned.rowCount ?? 0) === 0) {
+    return {
+      error: {
+        status: 404,
+        message: "Actividad no encontrada",
+      },
+    };
+  }
+
+  const activity = await client.query(
+    `
+      SELECT
+        estado,
+        (
+          (fecha_limite + hora_limite)
+          AT TIME ZONE 'America/Bogota'
+        ) <= NOW() AS vencida
+      FROM activities.actividad
+      WHERE id_actividad = $1
+      FOR SHARE
+    `,
+    [assigned.rows[0].id_actividad],
+  );
+
+  if (activity.rows[0].estado !== "ABIERTA") {
+    return {
+      error: {
+        status: 409,
+        message:
+          "La actividad está cerrada y ya no admite cambios en la entrega",
+      },
+    };
+  }
+
+  if (activity.rows[0].vencida) {
+    return {
+      error: {
+        status: 409,
+        message: "La fecha límite de la actividad ya pasó",
+      },
+    };
+  }
+
+  if (!assigned.rows[0].id_entrega) {
+    return {
+      error: {
+        status: 409,
+        message:
+          "Primero registra tus respuestas; luego podrás adjuntar evidencias",
+      },
+    };
+  }
+
+  return {
+    idEntrega: assigned.rows[0].id_entrega,
+  };
+}
+
+// ------------------------------------------------------
+// Subir evidencia
+// Cuerpo: contenido binario del archivo
+// Query: nombre = nombre original del archivo
+// ------------------------------------------------------
+
+app.post(
+  "/api/student/:idEstudiante/activities/:idActividadEstudiante/evidences",
+  express.raw({
+    type: () => true,
+    limit: MAX_EVIDENCE_BYTES,
+  }),
+  async (req, res) => {
+    const idEstudiante = positiveInt(req.params.idEstudiante);
+
+    const idActividadEstudiante = positiveInt(req.params.idActividadEstudiante);
+
+    if (!idEstudiante || !idActividadEstudiante) {
+      return res.status(400).json({
+        message: "La actividad solicitada no es válida",
+      });
+    }
+
+    const nombre = sanitizeFileName(String(req.query.nombre ?? ""));
+
+    if (!nombre) {
+      return res.status(400).json({
+        message: "El nombre del archivo es obligatorio",
+      });
+    }
+
+    const buffer: Buffer = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.alloc(0);
+
+    if (buffer.length === 0) {
+      return res.status(400).json({
+        message: "El archivo está vacío",
+      });
+    }
+
+    const detected = detectEvidenceType(nombre, buffer);
+
+    if (!detected) {
+      return res.status(400).json({
+        message:
+          "Tipo de archivo no permitido. Formatos aceptados: " +
+          ALLOWED_FORMATS_LABEL,
+      });
+    }
+
+    const client = await pool.connect();
+    let transactionStarted = false;
+    let uploadedPath: string | null = null;
+
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+
+      const lock = await lockEditableSubmission(
+        client,
+        idEstudiante,
+        idActividadEstudiante,
+      );
+
+      if ("error" in lock) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return res
+          .status(lock.error.status)
+          .json({ message: lock.error.message });
+      }
+
+      const count = await client.query(
+        `
+          SELECT COUNT(*)::int AS total
+          FROM activities.evidencia
+          WHERE id_entrega = $1
+        `,
+        [lock.idEntrega],
+      );
+
+      if (count.rows[0].total >= MAX_EVIDENCES_PER_SUBMISSION) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return res.status(409).json({
+          message:
+            "La entrega ya tiene el máximo de " +
+            MAX_EVIDENCES_PER_SUBMISSION +
+            " evidencias",
+        });
+      }
+
+      const path =
+        "entregas/" +
+        lock.idEntrega +
+        "/" +
+        randomUUID() +
+        "." +
+        detected.extension;
+
+      const { error: uploadError } = await storage
+        .from(EVIDENCE_BUCKET)
+        .upload(path, buffer, {
+          contentType: detected.mime,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error("Error subiendo evidencia a Storage:", uploadError);
+
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return res.status(502).json({
+          message: "No fue posible almacenar el archivo. Intenta de nuevo.",
+        });
+      }
+
+      uploadedPath = path;
+
+      const inserted = await client.query(
+        `
+          INSERT INTO activities.evidencia (
+            id_entrega,
+            nombre_archivo,
+            ruta_storage,
+            tipo_mime,
+            tamano_bytes
+          )
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING
+            id_evidencia,
+            id_entrega,
+            nombre_archivo,
+            tipo_mime,
+            tamano_bytes,
+            subido_en
+        `,
+        [lock.idEntrega, nombre, path, detected.mime, buffer.length],
+      );
+
+      await client.query(
+        `
+          UPDATE activities.entrega
+          SET actualizado_en = NOW()
+          WHERE id_entrega = $1
+        `,
+        [lock.idEntrega],
+      );
+
+      await client.query("COMMIT");
+      transactionStarted = false;
+      uploadedPath = null;
+
+      return res.status(201).json({
+        data: inserted.rows[0],
+        message: "Evidencia adjuntada correctamente",
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        await client.query("ROLLBACK");
+      }
+
+      // El archivo quedó en Storage pero no en la base de
+      // datos: se elimina para no dejar huérfanos.
+      if (uploadedPath) {
+        await storage
+          .from(EVIDENCE_BUCKET)
+          .remove([uploadedPath])
+          .catch((e) => console.error("Error limpiando evidencia:", e));
+      }
+
+      console.error("Error adjuntando evidencia:", error);
+
+      return res.status(500).json({
+        message: "No fue posible adjuntar la evidencia",
+      });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+// ------------------------------------------------------
+// Eliminar evidencia
+// ------------------------------------------------------
+
+app.delete(
+  "/api/student/:idEstudiante/activities/:idActividadEstudiante/evidences/:idEvidencia",
+  async (req, res) => {
+    const idEstudiante = positiveInt(req.params.idEstudiante);
+
+    const idActividadEstudiante = positiveInt(req.params.idActividadEstudiante);
+
+    const idEvidencia = positiveInt(req.params.idEvidencia);
+
+    if (!idEstudiante || !idActividadEstudiante || !idEvidencia) {
+      return res.status(400).json({
+        message: "La evidencia indicada no es válida",
+      });
+    }
+
+    const client = await pool.connect();
+    let transactionStarted = false;
+
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+
+      const lock = await lockEditableSubmission(
+        client,
+        idEstudiante,
+        idActividadEstudiante,
+      );
+
+      if ("error" in lock) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return res
+          .status(lock.error.status)
+          .json({ message: lock.error.message });
+      }
+
+      const deleted = await client.query(
+        `
+          DELETE FROM activities.evidencia
+          WHERE id_evidencia = $1
+            AND id_entrega = $2
+          RETURNING ruta_storage
+        `,
+        [idEvidencia, lock.idEntrega],
+      );
+
+      if ((deleted.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return res.status(404).json({
+          message: "Evidencia no encontrada",
+        });
+      }
+
+      await client.query(
+        `
+          UPDATE activities.entrega
+          SET actualizado_en = NOW()
+          WHERE id_entrega = $1
+        `,
+        [lock.idEntrega],
+      );
+
+      await client.query("COMMIT");
+      transactionStarted = false;
+
+      // La fila ya no existe; si falla el borrado del
+      // objeto solo queda un archivo huérfano (se registra).
+      const { error: removeError } = await storage
+        .from(EVIDENCE_BUCKET)
+        .remove([deleted.rows[0].ruta_storage]);
+
+      if (removeError) {
+        console.error(
+          "Evidencia eliminada en BD pero no en Storage:",
+          deleted.rows[0].ruta_storage,
+          removeError,
+        );
+      }
+
+      return res.json({
+        message: "Evidencia eliminada correctamente",
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        await client.query("ROLLBACK");
+      }
+
+      console.error("Error eliminando evidencia:", error);
+
+      return res.status(500).json({
+        message: "No fue posible eliminar la evidencia",
+      });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+// ------------------------------------------------------
+// URL firmada de descarga
+// ------------------------------------------------------
+
+async function signedEvidenceUrl(
+  res: express.Response,
+  query: string,
+  params: unknown[],
+) {
+  try {
+    const result = await pool.query(query, params);
+
+    if ((result.rowCount ?? 0) === 0) {
+      return res.status(404).json({
+        message: "Evidencia no encontrada",
+      });
+    }
+
+    const evidencia = result.rows[0];
+
+    const { data, error } = await storage
+      .from(EVIDENCE_BUCKET)
+      .createSignedUrl(evidencia.ruta_storage, SIGNED_URL_SECONDS, {
+        download: evidencia.nombre_archivo,
+      });
+
+    if (error || !data) {
+      console.error("Error firmando URL de evidencia:", error);
+
+      return res.status(502).json({
+        message: "No fue posible generar el enlace de descarga",
+      });
+    }
+
+    return res.json({
+      data: {
+        url: data.signedUrl,
+        expira_en_segundos: SIGNED_URL_SECONDS,
+      },
+    });
+  } catch (error) {
+    console.error("Error consultando evidencia:", error);
+
+    return res.status(500).json({
+      message: "No fue posible consultar la evidencia",
+    });
+  }
+}
+
+// Estudiante: solo evidencias de sus entregas
+app.get(
+  "/api/student/:idEstudiante/evidences/:idEvidencia/url",
+  async (req, res) => {
+    const idEstudiante = positiveInt(req.params.idEstudiante);
+    const idEvidencia = positiveInt(req.params.idEvidencia);
+
+    if (!idEstudiante || !idEvidencia) {
+      return res.status(400).json({
+        message: "La evidencia indicada no es válida",
+      });
+    }
+
+    return signedEvidenceUrl(
+      res,
+      `
+        SELECT ev.ruta_storage, ev.nombre_archivo
+        FROM activities.evidencia ev
+        INNER JOIN activities.entrega en
+          ON en.id_entrega = ev.id_entrega
+        INNER JOIN activities.actividad_estudiante ae
+          ON ae.id_actividad_estudiante =
+             en.id_actividad_estudiante
+        WHERE ev.id_evidencia = $1
+          AND ae.id_estudiante = $2
+      `,
+      [idEvidencia, idEstudiante],
+    );
+  },
+);
+
+// Docente: solo evidencias de actividades propias
+app.get("/api/activities/:id/evidences/:idEvidencia/url", async (req, res) => {
+  const idActividad = positiveInt(req.params.id);
+  const idEvidencia = positiveInt(req.params.idEvidencia);
+  const idDocente = positiveInt(req.query.teacherId);
+
+  if (!idActividad || !idEvidencia || !idDocente) {
+    return res.status(400).json({
+      message: "La evidencia indicada no es válida",
+    });
+  }
+
+  return signedEvidenceUrl(
+    res,
+    `
+        SELECT ev.ruta_storage, ev.nombre_archivo
+        FROM activities.evidencia ev
+        INNER JOIN activities.entrega en
+          ON en.id_entrega = ev.id_entrega
+        INNER JOIN activities.actividad_estudiante ae
+          ON ae.id_actividad_estudiante =
+             en.id_actividad_estudiante
+        INNER JOIN activities.actividad a
+          ON a.id_actividad = ae.id_actividad
+        WHERE ev.id_evidencia = $1
+          AND a.id_actividad = $2
+          AND a.id_docente = $3
+      `,
+    [idEvidencia, idActividad, idDocente],
+  );
+});
+
+// ------------------------------------------------------
+// Errores de lectura del cuerpo (tamaño, JSON inválido)
+// ------------------------------------------------------
+
+app.use(
+  (
+    error: any,
+    _req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    if (error?.type === "entity.too.large") {
+      return res.status(413).json({
+        message: "El archivo supera el tamaño máximo de 10 MB",
+      });
+    }
+
+    if (error?.type === "entity.parse.failed") {
+      return res.status(400).json({
+        message: "El cuerpo de la petición no es válido",
+      });
+    }
+
+    return next(error);
+  },
 );
 
 const port = process.env.PORT || 3336;

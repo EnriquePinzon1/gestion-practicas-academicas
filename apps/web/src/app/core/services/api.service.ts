@@ -100,6 +100,47 @@ async patch<T>(
     return this.handleResponse<T>(response);
   }
 
+  async delete<T>(endpoint: string): Promise<T> {
+    const token = await this.getToken();
+
+    const response = await fetch(
+      `${this.gatewayUrl}${endpoint}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return this.handleResponse<T>(response);
+  }
+
+  // Sube un archivo como binario; el nombre original va
+  // en ?nombre= (el backend valida tipo y tamaño).
+  async upload<T>(
+    endpoint: string,
+    file: File
+  ): Promise<T> {
+    const token = await this.getToken();
+
+    const separator = endpoint.includes('?') ? '&' : '?';
+
+    const response = await fetch(
+      `${this.gatewayUrl}${endpoint}${separator}nombre=${encodeURIComponent(file.name)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/octet-stream',
+        },
+        body: file,
+      }
+    );
+
+    return this.handleResponse<T>(response);
+  }
+
   private async handleResponse<T>(
     response: Response
   ): Promise<T> {

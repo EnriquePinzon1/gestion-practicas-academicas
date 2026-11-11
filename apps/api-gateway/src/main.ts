@@ -1953,6 +1953,139 @@ app.put(
     )
 );
 
+// ========================================================
+// EVIDENCIAS DE ENTREGA
+// El archivo llega como binario (application/octet-stream)
+// con el nombre original en ?nombre=. Se valida token y rol
+// ANTES de leer el cuerpo, y el tamaño se limita a 10 MB.
+// ========================================================
+
+const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
+
+function rejectLargeUpload(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const length = Number(req.headers['content-length']);
+
+  if (Number.isFinite(length) && length > MAX_EVIDENCE_BYTES) {
+    return res.status(413).json({
+      message: 'El archivo supera el tamaño máximo de 10 MB',
+    });
+  }
+
+  next();
+}
+
+app.post(
+  '/api/student/activities/:id/evidences',
+  requireAuth,
+  requireStudent,
+  rejectLargeUpload,
+  express.raw({
+    type: () => true,
+    limit: MAX_EVIDENCE_BYTES,
+  }),
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/student/' +
+        res.locals.student.id_estudiante +
+        '/activities/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/evidences?nombre=' +
+        encodeURIComponent(String(req.query.nombre ?? '')),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+        },
+        body: Buffer.isBuffer(req.body)
+          ? new Uint8Array(req.body)
+          : new Uint8Array(),
+      },
+      'Error adjuntando evidencia:'
+    )
+);
+
+app.delete(
+  '/api/student/activities/:id/evidences/:idEvidencia',
+  requireAuth,
+  requireStudent,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/student/' +
+        res.locals.student.id_estudiante +
+        '/activities/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/evidences/' +
+        encodeURIComponent(String(req.params.idEvidencia)),
+      { method: 'DELETE' },
+      'Error eliminando evidencia:'
+    )
+);
+
+app.get(
+  '/api/student/evidences/:idEvidencia/url',
+  requireAuth,
+  requireStudent,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/student/' +
+        res.locals.student.id_estudiante +
+        '/evidences/' +
+        encodeURIComponent(String(req.params.idEvidencia)) +
+        '/url',
+      { method: 'GET' },
+      'Error generando enlace de evidencia:'
+    )
+);
+
+app.get(
+  '/api/activities/:id/evidences/:idEvidencia/url',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/activities/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/evidences/' +
+        encodeURIComponent(String(req.params.idEvidencia)) +
+        '/url?teacherId=' +
+        res.locals.teacher.id_docente,
+      { method: 'GET' },
+      'Error generando enlace de evidencia:'
+    )
+);
+
+// Errores al leer el cuerpo (tamaño excedido, JSON inválido)
+app.use(
+  (
+    error: any,
+    _req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    if (error?.type === 'entity.too.large') {
+      return res.status(413).json({
+        message: 'El archivo supera el tamaño máximo de 10 MB',
+      });
+    }
+
+    if (error?.type === 'entity.parse.failed') {
+      return res.status(400).json({
+        message: 'El cuerpo de la petición no es válido',
+      });
+    }
+
+    return next(error);
+  }
+);
+
 // AQUÍ empieza el servidor
 const port = process.env.PORT || 3333;
 

@@ -3,6 +3,8 @@
 // Tipos y reglas de presentación compartidas
 // ======================================================
 
+import { Evidencia } from './evidence.model';
+
 export interface ActividadEstudiante {
   id_actividad_estudiante: number;
   id_actividad: number;
@@ -31,6 +33,7 @@ export interface PreguntaConRespuesta {
 export interface ActividadEstudianteDetalle
   extends ActividadEstudiante {
   preguntas: PreguntaConRespuesta[];
+  evidencias: Evidencia[];
 }
 
 export type EstadoVisible =

@@ -293,6 +293,14 @@
                     <p>{{ answerFor(delivery.respuestas, question.id_pregunta) }}</p>
                   </div>
                 }
+
+                <div>
+                  <strong>Evidencias</strong>
+                  <app-evidence-list
+                    [evidencias]="delivery.evidencias"
+                    (download)="downloadEvidence($event)"
+                  />
+                </div>
               </div>
             }
 
