@@ -26,19 +26,38 @@
       </label>
 
       <label>
-        Práctica *
-        <select [(ngModel)]="idPractica">
-          <option [ngValue]="null">
-            Seleccione una práctica
-          </option>
+  Práctica *
 
-          @for (practica of activePractices(); track practica.id_practica) {
-            <option [ngValue]="practica.id_practica">
-              {{ practica.nombre }}
-            </option>
-          }
-        </select>
-      </label>
+  <select
+    [(ngModel)]="idPractica"
+    name="idPractica"
+    [disabled]="editMode()"
+  >
+    <option [ngValue]="null">
+      Seleccione una práctica
+    </option>
+
+    @for (
+      practica of practicas();
+      track practica.id_practica
+    ) {
+      <option [ngValue]="practica.id_practica">
+        {{ practica.nombre }}
+      </option>
+    }
+  </select>
+</label>
+
+      <label>
+  Periodo académico *
+  <input
+    type="text"
+    placeholder="Ej. 2026-2"
+    maxlength="6"
+    [(ngModel)]="periodoAcademico"
+    [disabled]="editMode()"
+  />
+</label>
 
       <label>
         Semestre

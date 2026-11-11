@@ -14,24 +14,33 @@
       <div class="header">
         <div>
           <h1>{{ p.nombre }}</h1>
+
           <span
             class="status"
-            [class.closed]="p.estado === 'CERRADA'"
+            [class.closed]="
+              p.estado === 'CERRADA'
+            "
           >
             {{ p.estado }}
           </span>
         </div>
 
         <div class="actions">
-          <button (click)="back()">
+          <button
+            (click)="back()"
+          >
             Volver
           </button>
 
-          <button (click)="edit()">
+          <button
+            (click)="edit()"
+          >
             Editar
           </button>
 
-          @if (p.estado === 'ACTIVA') {
+          @if (
+            p.estado === 'ACTIVA'
+          ) {
             <button
               class="danger"
               (click)="closePractice()"
@@ -44,29 +53,34 @@
 
       <div class="grid">
         <div>
-          <strong>Programa académico</strong>
-          <p>{{ p.programa }}</p>
+          <strong>
+            Programa académico
+          </strong>
+
+          <p>
+            {{ p.programa }}
+          </p>
         </div>
 
         <div>
-          <strong>Institución receptora</strong>
-          <p>{{ p.institucion }}</p>
-        </div>
+          <strong>
+            Horas requeridas
+          </strong>
 
-        <div>
-          <strong>Periodo académico</strong>
-          <p>{{ p.periodo_academico }}</p>
-        </div>
-
-        <div>
-          <strong>Horas requeridas</strong>
-          <p>{{ p.horas_requeridas }}</p>
+          <p>
+            {{ p.horas_requeridas }}
+          </p>
         </div>
       </div>
 
       <div class="description">
-        <strong>Descripción</strong>
-        <p>{{ p.descripcion }}</p>
+        <strong>
+          Descripción
+        </strong>
+
+        <p>
+          {{ p.descripcion }}
+        </p>
       </div>
     </div>
   }

@@ -95,6 +95,33 @@ async function getTeacherGroups(
   return body.data ?? [];
 }
 
+// ------------------------------------------------------
+// Obtener estudiantes pertenecientes a un grupo
+// desde practice-service
+// ------------------------------------------------------
+
+async function getGroupStudentIds(
+  idGrupo: number
+): Promise<number[]> {
+  const response = await fetch(
+    'http://localhost:3335/api/internal/groups/' +
+      idGrupo +
+      '/students'
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      'No fue posible consultar los estudiantes del grupo'
+    );
+  }
+
+  const body = (await response.json()) as {
+    data: number[];
+  };
+
+  return (body.data ?? []).map(Number);
+}
+
 
 // ======================================================
 // LISTAR ACTIVIDADES DEL DOCENTE
@@ -425,6 +452,25 @@ app.post(
       }
 
       // ------------------------------------------------
+// Obtener estudiantes actuales del grupo
+//
+// La actividad queda asignada a los estudiantes
+// que pertenecen al grupo al momento de publicarla.
+// ------------------------------------------------
+
+const estudiantes =
+  await getGroupStudentIds(idGrupo);
+
+if (estudiantes.length === 0) {
+  return res.status(409).json({
+    message:
+      'No es posible publicar una actividad en un grupo sin estudiantes',
+  });
+}
+
+
+
+      // ------------------------------------------------
       // Validar fecha/hora futura
       // usando zona horaria Colombia
       // ------------------------------------------------
@@ -545,9 +591,38 @@ app.post(
         );
       }
 
-      await client.query(
-        'COMMIT'
-      );
+     for (
+  const idEstudiante of estudiantes
+) {
+  await client.query(
+    `
+      INSERT INTO
+        activities.actividad_estudiante (
+          id_actividad,
+          id_estudiante,
+          estado
+        )
+      VALUES (
+        $1,
+        $2,
+        'PENDIENTE'
+      )
+      ON CONFLICT (
+        id_actividad,
+        id_estudiante
+      )
+      DO NOTHING
+    `,
+    [
+      actividad.id_actividad,
+      idEstudiante,
+    ]
+  );
+}
+
+await client.query(
+  'COMMIT'
+);
 
       return res
         .status(201)
@@ -568,6 +643,9 @@ app.post(
 
             preguntas:
               preguntasCreadas,
+
+            total_estudiantes_asignados:
+              estudiantes.length,
           },
 
           message:

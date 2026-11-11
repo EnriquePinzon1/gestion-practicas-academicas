@@ -33,8 +33,6 @@ interface Practica {
   id_practica: number;
   nombre: string;
   programa: string;
-  institucion: string;
-  periodo_academico: string;
   estado: string;
 }
 

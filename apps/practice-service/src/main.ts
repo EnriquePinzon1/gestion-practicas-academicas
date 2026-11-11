@@ -187,7 +187,7 @@ app.post('/api/institutions', async (req, res) => {
 // PRÁCTICAS ACADÉMICAS
 // ======================================================
 
-// Listar prácticas
+// Listar prácticas académicas
 app.get('/api/practices', async (_req, res) => {
   try {
     const result = await pool.query(`
@@ -195,18 +195,15 @@ app.get('/api/practices', async (_req, res) => {
         p.id_practica,
         p.nombre,
         p.descripcion,
-        p.periodo_academico,
         p.horas_requeridas,
         p.estado,
         pr.id_programa,
-        pr.nombre AS programa,
-        i.id_institucion,
-        i.nombre AS institucion
+        pr.nombre AS programa
       FROM practices.practica p
+
       INNER JOIN practices.programa pr
         ON pr.id_programa = p.id_programa
-      INNER JOIN practices.institucion i
-        ON i.id_institucion = p.id_institucion
+
       ORDER BY p.id_practica DESC
     `);
 
@@ -214,40 +211,47 @@ app.get('/api/practices', async (_req, res) => {
       data: result.rows,
     });
   } catch (error) {
-    console.error('Error consultando prácticas:', error);
+    console.error(
+      'Error consultando prácticas:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible consultar las prácticas académicas',
+      message:
+        'No fue posible consultar las prácticas académicas',
     });
   }
 });
 
-// Crear práctica
+// Crear práctica académica
 app.post('/api/practices', async (req, res) => {
-  const nombre = String(req.body?.nombre ?? '').trim();
-  const descripcion = String(req.body?.descripcion ?? '').trim();
-  const periodoAcademico = String(
-    req.body?.periodo_academico ?? ''
+  const nombre = String(
+    req.body?.nombre ?? ''
   ).trim();
 
-  const idPrograma = Number(req.body?.id_programa);
-  const idInstitucion = Number(req.body?.id_institucion);
-  const horasRequeridas = Number(req.body?.horas_requeridas);
+  const descripcion = String(
+    req.body?.descripcion ?? ''
+  ).trim();
+
+  const idPrograma = Number(
+    req.body?.id_programa
+  );
+
+  const horasRequeridas = Number(
+    req.body?.horas_requeridas
+  );
 
   if (
     !nombre ||
     !descripcion ||
-    !periodoAcademico ||
     !Number.isInteger(idPrograma) ||
     idPrograma <= 0 ||
-    !Number.isInteger(idInstitucion) ||
-    idInstitucion <= 0 ||
     !Number.isInteger(horasRequeridas) ||
     horasRequeridas <= 0
   ) {
     return res.status(400).json({
       message:
-        'Nombre, descripción, programa, institución, periodo académico y horas requeridas son obligatorios. Las horas deben ser mayores que cero.',
+        'Nombre, descripción, programa y horas requeridas son obligatorios. Las horas deben ser mayores que cero.',
     });
   }
 
@@ -263,22 +267,8 @@ app.post('/api/practices', async (req, res) => {
 
     if ((program.rowCount ?? 0) === 0) {
       return res.status(400).json({
-        message: 'El programa académico seleccionado no existe',
-      });
-    }
-
-    const institution = await pool.query(
-      `
-        SELECT id_institucion
-        FROM practices.institucion
-        WHERE id_institucion = $1
-      `,
-      [idInstitucion]
-    );
-
-    if ((institution.rowCount ?? 0) === 0) {
-      return res.status(400).json({
-        message: 'La institución seleccionada no existe',
+        message:
+          'El programa académico seleccionado no existe',
       });
     }
 
@@ -288,18 +278,15 @@ app.post('/api/practices', async (req, res) => {
           nombre,
           descripcion,
           id_programa,
-          id_institucion,
-          periodo_academico,
           horas_requeridas
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4)
+
         RETURNING
           id_practica,
           nombre,
           descripcion,
           id_programa,
-          id_institucion,
-          periodo_academico,
           horas_requeridas,
           estado
       `,
@@ -307,21 +294,24 @@ app.post('/api/practices', async (req, res) => {
         nombre,
         descripcion,
         idPrograma,
-        idInstitucion,
-        periodoAcademico,
         horasRequeridas,
       ]
     );
 
     return res.status(201).json({
       data: result.rows[0],
-      message: 'Práctica registrada correctamente',
+      message:
+        'Práctica académica registrada correctamente',
     });
   } catch (error) {
-    console.error('Error creando práctica:', error);
+    console.error(
+      'Error creando práctica:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible registrar la práctica académica',
+      message:
+        'No fue posible registrar la práctica académica',
     });
   }
 });
@@ -333,9 +323,13 @@ app.post('/api/practices', async (req, res) => {
 app.get('/api/practices/:id', async (req, res) => {
   const idPractica = Number(req.params.id);
 
-  if (!Number.isInteger(idPractica) || idPractica <= 0) {
+  if (
+    !Number.isInteger(idPractica) ||
+    idPractica <= 0
+  ) {
     return res.status(400).json({
-      message: 'El identificador de la práctica no es válido',
+      message:
+        'El identificador de la práctica no es válido',
     });
   }
 
@@ -348,16 +342,13 @@ app.get('/api/practices/:id', async (req, res) => {
           p.descripcion,
           p.id_programa,
           pr.nombre AS programa,
-          p.id_institucion,
-          i.nombre AS institucion,
-          p.periodo_academico,
           p.horas_requeridas,
           p.estado
         FROM practices.practica p
+
         INNER JOIN practices.programa pr
           ON pr.id_programa = p.id_programa
-        INNER JOIN practices.institucion i
-          ON i.id_institucion = p.id_institucion
+
         WHERE p.id_practica = $1
       `,
       [idPractica]
@@ -365,7 +356,8 @@ app.get('/api/practices/:id', async (req, res) => {
 
     if ((result.rowCount ?? 0) === 0) {
       return res.status(404).json({
-        message: 'Práctica no encontrada',
+        message:
+          'Práctica no encontrada',
       });
     }
 
@@ -373,10 +365,14 @@ app.get('/api/practices/:id', async (req, res) => {
       data: result.rows[0],
     });
   } catch (error) {
-    console.error('Error consultando práctica:', error);
+    console.error(
+      'Error consultando práctica:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible consultar la práctica académica',
+      message:
+        'No fue posible consultar la práctica académica',
     });
   }
 });
@@ -386,38 +382,47 @@ app.get('/api/practices/:id', async (req, res) => {
 // ======================================================
 
 app.patch('/api/practices/:id', async (req, res) => {
-  const idPractica = Number(req.params.id);
+  const idPractica = Number(
+    req.params.id
+  );
 
-  const nombre = String(req.body?.nombre ?? '').trim();
-  const descripcion = String(req.body?.descripcion ?? '').trim();
-  const periodoAcademico = String(
-    req.body?.periodo_academico ?? ''
+  const nombre = String(
+    req.body?.nombre ?? ''
   ).trim();
 
-  const idPrograma = Number(req.body?.id_programa);
-  const idInstitucion = Number(req.body?.id_institucion);
-  const horasRequeridas = Number(req.body?.horas_requeridas);
+  const descripcion = String(
+    req.body?.descripcion ?? ''
+  ).trim();
 
-  if (!Number.isInteger(idPractica) || idPractica <= 0) {
+  const idPrograma = Number(
+    req.body?.id_programa
+  );
+
+  const horasRequeridas = Number(
+    req.body?.horas_requeridas
+  );
+
+  if (
+    !Number.isInteger(idPractica) ||
+    idPractica <= 0
+  ) {
     return res.status(400).json({
-      message: 'El identificador de la práctica no es válido',
+      message:
+        'El identificador de la práctica no es válido',
     });
   }
 
   if (
     !nombre ||
     !descripcion ||
-    !periodoAcademico ||
     !Number.isInteger(idPrograma) ||
     idPrograma <= 0 ||
-    !Number.isInteger(idInstitucion) ||
-    idInstitucion <= 0 ||
     !Number.isInteger(horasRequeridas) ||
     horasRequeridas <= 0
   ) {
     return res.status(400).json({
       message:
-        'Nombre, descripción, programa, institución, periodo académico y horas requeridas son obligatorios. Las horas deben ser mayores que cero.',
+        'Nombre, descripción, programa y horas requeridas son obligatorios.',
     });
   }
 
@@ -433,7 +438,8 @@ app.patch('/api/practices/:id', async (req, res) => {
 
     if ((practice.rowCount ?? 0) === 0) {
       return res.status(404).json({
-        message: 'Práctica no encontrada',
+        message:
+          'Práctica no encontrada',
       });
     }
 
@@ -448,22 +454,8 @@ app.patch('/api/practices/:id', async (req, res) => {
 
     if ((program.rowCount ?? 0) === 0) {
       return res.status(400).json({
-        message: 'El programa académico seleccionado no existe',
-      });
-    }
-
-    const institution = await pool.query(
-      `
-        SELECT id_institucion
-        FROM practices.institucion
-        WHERE id_institucion = $1
-      `,
-      [idInstitucion]
-    );
-
-    if ((institution.rowCount ?? 0) === 0) {
-      return res.status(400).json({
-        message: 'La institución seleccionada no existe',
+        message:
+          'El programa académico seleccionado no existe',
       });
     }
 
@@ -474,18 +466,21 @@ app.patch('/api/practices/:id', async (req, res) => {
           nombre = $1,
           descripcion = $2,
           id_programa = $3,
-          id_institucion = $4,
-          periodo_academico = $5,
-          horas_requeridas = $6
-        WHERE id_practica = $7
-        RETURNING *
+          horas_requeridas = $4
+        WHERE id_practica = $5
+
+        RETURNING
+          id_practica,
+          nombre,
+          descripcion,
+          id_programa,
+          horas_requeridas,
+          estado
       `,
       [
         nombre,
         descripcion,
         idPrograma,
-        idInstitucion,
-        periodoAcademico,
         horasRequeridas,
         idPractica,
       ]
@@ -493,13 +488,18 @@ app.patch('/api/practices/:id', async (req, res) => {
 
     return res.json({
       data: result.rows[0],
-      message: 'Práctica actualizada correctamente',
+      message:
+        'Práctica académica actualizada correctamente',
     });
   } catch (error) {
-    console.error('Error actualizando práctica:', error);
+    console.error(
+      'Error actualizando práctica:',
+      error
+    );
 
     return res.status(500).json({
-      message: 'No fue posible actualizar la práctica académica',
+      message:
+        'No fue posible actualizar la práctica académica',
     });
   }
 });
@@ -568,6 +568,7 @@ app.get('/api/groups', async (_req, res) => {
       SELECT
         g.id_grupo,
         g.nombre,
+        g.periodo_academico,
         g.semestre,
         g.id_docente,
         g.estado,
@@ -588,6 +589,7 @@ app.get('/api/groups', async (_req, res) => {
       GROUP BY
         g.id_grupo,
         g.nombre,
+        g.periodo_academico,
         g.semestre,
         g.id_docente,
         g.estado,
@@ -613,6 +615,9 @@ app.get('/api/groups', async (_req, res) => {
 // Crear grupo
 app.post('/api/groups', async (req, res) => {
   const nombre = String(req.body?.nombre ?? '').trim();
+  const periodoAcademico = String(
+  req.body?.periodo_academico ?? ''
+).trim();
 
   const idPractica = Number(req.body?.id_practica);
   const idDocente = Number(req.body?.id_docente);
@@ -630,6 +635,7 @@ app.post('/api/groups', async (req, res) => {
 
   if (
     !nombre ||
+    !periodoAcademico ||
     !Number.isInteger(idPractica) ||
     idPractica <= 0 ||
     !Number.isInteger(idDocente) ||
@@ -637,9 +643,18 @@ app.post('/api/groups', async (req, res) => {
   ) {
     return res.status(400).json({
       message:
-        'Nombre, práctica y Docente Asesor son obligatorios',
+        'Nombre, práctica, periodo academico y Docente Asesor son obligatorios',
     });
   }
+
+  if (
+  !/^\d{4}-[12]$/.test(periodoAcademico)
+) {
+  return res.status(400).json({
+    message:
+      'El periodo académico debe tener el formato AAAA-1 o AAAA-2',
+  });
+}
 
   if (
     semestre !== null &&
@@ -711,10 +726,11 @@ app.post('/api/groups', async (req, res) => {
         FROM practices.grupo
         WHERE
           id_practica = $1
-          AND LOWER(nombre) = LOWER($2)
+          AND periodo_academico = $2
+          AND LOWER(nombre) = LOWER($3)
         LIMIT 1
       `,
-      [idPractica, nombre]
+      [idPractica, periodoAcademico, nombre]
     );
 
     if ((duplicateGroup.rowCount ?? 0) > 0) {
@@ -827,15 +843,17 @@ app.post('/api/groups', async (req, res) => {
         INSERT INTO practices.grupo (
           nombre,
           id_practica,
+          periodo_academico,
           semestre,
           id_docente
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5)
 
         RETURNING
           id_grupo,
           nombre,
           id_practica,
+          periodo_academico,
           semestre,
           id_docente,
           estado
@@ -843,6 +861,7 @@ app.post('/api/groups', async (req, res) => {
       [
         nombre,
         idPractica,
+        periodoAcademico,
         semestre,
         idDocente,
       ]
@@ -905,6 +924,7 @@ app.get('/api/groups/:id', async (req, res) => {
           g.nombre,
           g.id_practica,
           p.nombre AS practica,
+          g.periodo_academico,
           g.semestre,
           g.id_docente,
           g.estado
@@ -993,16 +1013,15 @@ app.get('/api/groups/:id', async (req, res) => {
   }
 });
 
+
 app.patch('/api/groups/:id', async (req, res) => {
-  const idGrupo = Number(req.params.id);
+  const idGrupo = Number(
+    req.params.id
+  );
 
   const nombre = String(
     req.body?.nombre ?? ''
   ).trim();
-
-  const idPractica = Number(
-    req.body?.id_practica
-  );
 
   const idDocente = Number(
     req.body?.id_docente
@@ -1019,8 +1038,6 @@ app.patch('/api/groups/:id', async (req, res) => {
     !Number.isInteger(idGrupo) ||
     idGrupo <= 0 ||
     !nombre ||
-    !Number.isInteger(idPractica) ||
-    idPractica <= 0 ||
     !Number.isInteger(idDocente) ||
     idDocente <= 0
   ) {
@@ -1030,10 +1047,28 @@ app.patch('/api/groups/:id', async (req, res) => {
     });
   }
 
+  if (
+    semestre !== null &&
+    (
+      !Number.isInteger(semestre) ||
+      semestre < 1 ||
+      semestre > 20
+    )
+  ) {
+    return res.status(400).json({
+      message:
+        'El semestre no es válido',
+    });
+  }
+
   try {
     const current = await pool.query(
       `
-        SELECT id_grupo, estado
+        SELECT
+          id_grupo,
+          id_practica,
+          periodo_academico,
+          estado
         FROM practices.grupo
         WHERE id_grupo = $1
       `,
@@ -1042,47 +1077,32 @@ app.patch('/api/groups/:id', async (req, res) => {
 
     if ((current.rowCount ?? 0) === 0) {
       return res.status(404).json({
-        message: 'Grupo no encontrado',
+        message:
+          'Grupo no encontrado',
       });
     }
 
-    if (current.rows[0].estado !== 'ACTIVO') {
+    const grupoActual =
+      current.rows[0];
+
+    if (
+      grupoActual.estado !== 'ACTIVO'
+    ) {
       return res.status(409).json({
         message:
           'No es posible editar un grupo cerrado',
       });
     }
 
-    const practice = await pool.query(
-      `
-        SELECT id_practica, estado
-        FROM practices.practica
-        WHERE id_practica = $1
-      `,
-      [idPractica]
-    );
-
-    if ((practice.rowCount ?? 0) === 0) {
-      return res.status(400).json({
-        message:
-          'La práctica seleccionada no existe',
-      });
-    }
-
-    if (practice.rows[0].estado !== 'ACTIVA') {
-      return res.status(400).json({
-        message:
-          'La práctica seleccionada se encuentra cerrada',
-      });
-    }
-
-    const teachersResponse = await fetch(
-      'http://localhost:3334/api/internal/teachers/available'
-    );
+    const teachersResponse =
+      await fetch(
+        'http://localhost:3334/api/internal/teachers/available'
+      );
 
     if (!teachersResponse.ok) {
       return res.status(503).json({
-        message: 'User Service no disponible',
+        message:
+          'User Service no disponible',
       });
     }
 
@@ -1092,7 +1112,8 @@ app.patch('/api/groups/:id', async (req, res) => {
     const teacherExists =
       (teachersBody.data ?? []).some(
         (item: any) =>
-          Number(item.id_docente) === idDocente
+          Number(item.id_docente) ===
+          idDocente
       );
 
     if (!teacherExists) {
@@ -1102,44 +1123,60 @@ app.patch('/api/groups/:id', async (req, res) => {
       });
     }
 
-    const duplicate = await pool.query(
-      `
-        SELECT id_grupo
-        FROM practices.grupo
-        WHERE
-          id_practica = $1
-          AND LOWER(nombre) = LOWER($2)
-          AND id_grupo <> $3
-      `,
-      [idPractica, nombre, idGrupo]
-    );
+    const duplicate =
+      await pool.query(
+        `
+          SELECT id_grupo
+          FROM practices.grupo
+          WHERE
+            id_practica = $1
+            AND periodo_academico = $2
+            AND LOWER(nombre) = LOWER($3)
+            AND id_grupo <> $4
+        `,
+        [
+          grupoActual.id_practica,
+          grupoActual.periodo_academico,
+          nombre,
+          idGrupo,
+        ]
+      );
 
-    if ((duplicate.rowCount ?? 0) > 0) {
+    if (
+      (duplicate.rowCount ?? 0) > 0
+    ) {
       return res.status(409).json({
         message:
-          'Ya existe otro grupo con ese nombre para la práctica',
+          'Ya existe otro grupo con ese nombre para la práctica y periodo académico',
       });
     }
 
-    const result = await pool.query(
-      `
-        UPDATE practices.grupo
-        SET
-          nombre = $1,
-          id_practica = $2,
-          semestre = $3,
-          id_docente = $4
-        WHERE id_grupo = $5
-        RETURNING *
-      `,
-      [
-        nombre,
-        idPractica,
-        semestre,
-        idDocente,
-        idGrupo,
-      ]
-    );
+    const result =
+      await pool.query(
+        `
+          UPDATE practices.grupo
+          SET
+            nombre = $1,
+            semestre = $2,
+            id_docente = $3
+          WHERE id_grupo = $4
+
+          RETURNING
+            id_grupo,
+            nombre,
+            id_practica,
+            periodo_academico,
+            semestre,
+            id_docente,
+            estado
+        `,
+        [
+          nombre,
+          semestre,
+          idDocente,
+          idGrupo,
+        ]
+      );
 
     return res.json({
       data: result.rows[0],
@@ -1159,166 +1196,16 @@ app.patch('/api/groups/:id', async (req, res) => {
   }
 });
 
-app.patch(
-  '/api/groups/:id/students',
+// ======================================================
+// INTERNAL - ESTUDIANTES DE UN GRUPO
+// ======================================================
+
+app.get(
+  '/api/internal/groups/:idGrupo/students',
   async (req, res) => {
-    const idGrupo = Number(req.params.id);
-    const idEstudiante = Number(
-      req.body?.id_estudiante
+    const idGrupo = Number(
+      req.params.idGrupo
     );
-
-    const action = String(
-      req.body?.action ?? ''
-    )
-      .trim()
-      .toUpperCase();
-
-    if (
-      !Number.isInteger(idGrupo) ||
-      idGrupo <= 0 ||
-      !Number.isInteger(idEstudiante) ||
-      idEstudiante <= 0 ||
-      !['ADD', 'REMOVE'].includes(action)
-    ) {
-      return res.status(400).json({
-        message:
-          'La operación sobre el estudiante no es válida',
-      });
-    }
-
-    try {
-      const group = await pool.query(
-        `
-          SELECT id_grupo, estado
-          FROM practices.grupo
-          WHERE id_grupo = $1
-        `,
-        [idGrupo]
-      );
-
-      if ((group.rowCount ?? 0) === 0) {
-        return res.status(404).json({
-          message: 'Grupo no encontrado',
-        });
-      }
-
-      if (group.rows[0].estado !== 'ACTIVO') {
-        return res.status(409).json({
-          message:
-            'No es posible modificar integrantes de un grupo cerrado',
-        });
-      }
-
-      if (action === 'ADD') {
-        const studentsResponse = await fetch(
-          'http://localhost:3334/api/internal/students/available'
-        );
-
-        if (!studentsResponse.ok) {
-          return res.status(503).json({
-            message:
-              'User Service no disponible',
-          });
-        }
-
-        const studentsBody: any =
-          await studentsResponse.json();
-
-        const studentExists =
-          (studentsBody.data ?? []).some(
-            (item: any) =>
-              Number(item.id_estudiante) ===
-              idEstudiante
-          );
-
-        if (!studentExists) {
-          return res.status(400).json({
-            message:
-              'El estudiante seleccionado no está disponible',
-          });
-        }
-
-        const conflict = await pool.query(
-          `
-            SELECT
-              g.id_grupo,
-              g.nombre
-            FROM practices.grupo_estudiante ge
-            INNER JOIN practices.grupo g
-              ON g.id_grupo = ge.id_grupo
-            WHERE
-              ge.id_estudiante = $1
-              AND g.estado = 'ACTIVO'
-              AND g.id_grupo <> $2
-          `,
-          [idEstudiante, idGrupo]
-        );
-
-        if ((conflict.rowCount ?? 0) > 0) {
-          return res.status(409).json({
-            message:
-              'El estudiante ya pertenece a otro grupo activo',
-          });
-        }
-
-        await pool.query(
-          `
-            INSERT INTO practices.grupo_estudiante (
-              id_grupo,
-              id_estudiante
-            )
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `,
-          [idGrupo, idEstudiante]
-        );
-
-        return res.json({
-          message:
-            'Estudiante agregado correctamente',
-        });
-      }
-
-      const result = await pool.query(
-        `
-          DELETE FROM practices.grupo_estudiante
-          WHERE
-            id_grupo = $1
-            AND id_estudiante = $2
-          RETURNING id_estudiante
-        `,
-        [idGrupo, idEstudiante]
-      );
-
-      if ((result.rowCount ?? 0) === 0) {
-        return res.status(404).json({
-          message:
-            'El estudiante no pertenece al grupo',
-        });
-      }
-
-      return res.json({
-        message:
-          'Estudiante retirado correctamente',
-      });
-    } catch (error) {
-      console.error(
-        'Error modificando integrantes:',
-        error
-      );
-
-      return res.status(500).json({
-        message:
-          'No fue posible modificar los integrantes del grupo',
-      });
-    }
-  }
-);
-
-app.patch(
-  '/api/groups/:id/status',
-  async (req, res) => {
-    const idGrupo = Number(req.params.id);
 
     if (
       !Number.isInteger(idGrupo) ||
@@ -1331,42 +1218,52 @@ app.patch(
     }
 
     try {
-      const result = await pool.query(
-        `
-          UPDATE practices.grupo
-          SET estado = 'CERRADO'
-          WHERE
-            id_grupo = $1
-            AND estado = 'ACTIVO'
-          RETURNING
-            id_grupo,
-            nombre,
-            estado
-        `,
-        [idGrupo]
-      );
+      const groupResult =
+        await pool.query(
+          `
+            SELECT id_grupo
+            FROM practices.grupo
+            WHERE id_grupo = $1
+          `,
+          [idGrupo]
+        );
 
-      if ((result.rowCount ?? 0) === 0) {
+      if (
+        (groupResult.rowCount ?? 0) === 0
+      ) {
         return res.status(404).json({
           message:
-            'El grupo no existe o ya se encuentra cerrado',
+            'Grupo no encontrado',
         });
       }
 
+      const result =
+        await pool.query(
+          `
+            SELECT
+              id_estudiante
+            FROM practices.grupo_estudiante
+            WHERE id_grupo = $1
+            ORDER BY id_estudiante
+          `,
+          [idGrupo]
+        );
+
       return res.json({
-        data: result.rows[0],
-        message:
-          'Grupo cerrado correctamente',
+        data: result.rows.map(
+          (item) =>
+            Number(item.id_estudiante)
+        ),
       });
     } catch (error) {
       console.error(
-        'Error cerrando grupo:',
+        'Error consultando estudiantes del grupo:',
         error
       );
 
       return res.status(500).json({
         message:
-          'No fue posible cerrar el grupo',
+          'No fue posible consultar los estudiantes del grupo',
       });
     }
   }
@@ -1403,7 +1300,7 @@ app.get(
 
             p.id_practica,
             p.nombre AS practica,
-            p.periodo_academico,
+            g.periodo_academico,
 
             COUNT(ge.id_estudiante)::int
               AS total_estudiantes
@@ -1426,7 +1323,7 @@ app.get(
             g.id_docente,
             p.id_practica,
             p.nombre,
-            p.periodo_academico
+            g.periodo_academico
 
           ORDER BY g.id_grupo DESC
         `,
