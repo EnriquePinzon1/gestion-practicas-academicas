@@ -59,7 +59,38 @@ export class App {
         this.updateLayout(
           event.urlAfterRedirects
         );
+
+        this.revealActiveLink();
       });
+  }
+
+  // En móvil el menú es una fila con scroll horizontal:
+  // centra el enlace activo para que se vea dónde se está.
+  // Solo mueve el scroll del menú, nunca el de la página.
+  private revealActiveLink() {
+    setTimeout(() => {
+      const nav =
+        document.querySelector<HTMLElement>('.navigation');
+
+      const active =
+        nav?.querySelector<HTMLElement>('a.active');
+
+      if (
+        !nav ||
+        !active ||
+        nav.scrollWidth <= nav.clientWidth
+      ) {
+        return;
+      }
+
+      const navRect = nav.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+
+      nav.scrollLeft +=
+        activeRect.left -
+        navRect.left -
+        (navRect.width - activeRect.width) / 2;
+    });
   }
 
   private updateLayout(url: string) {
@@ -89,6 +120,9 @@ export class App {
         );
 
       this.userRole.set(profile.rol);
+
+      // Los enlaces del rol aparecen ahora.
+      this.revealActiveLink();
 
       this.userName.set(
         `${profile.nombres} ${profile.apellidos}`

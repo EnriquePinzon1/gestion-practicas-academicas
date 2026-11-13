@@ -168,11 +168,14 @@
 }
 
 @media (max-width: 850px) {
+  // minmax(0, 1fr): sin esto la fila del menú impone su
+  // ancho mínimo y toda la app se desborda en móvil.
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .sidebar {
+    min-width: 0;
     position: relative;
     height: auto;
 
@@ -198,12 +201,31 @@
     flex-shrink: 0;
   }
 
+  .nav-role-info {
+    display: none;
+  }
+
+  // Nombre y "Cerrar sesión" en una sola fila.
   .sidebar-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
     margin-top: 12px;
     padding-top: 10px;
   }
 
+  .sidebar-footer > div {
+    min-width: 0;
+    padding: 0 4px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .sidebar-footer button {
     width: auto;
+    flex-shrink: 0;
   }
 }
