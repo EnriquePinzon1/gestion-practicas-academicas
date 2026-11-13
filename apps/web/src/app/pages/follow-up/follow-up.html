@@ -49,14 +49,14 @@
   </section>
 
   @if (loadingGroups()) {
-    <div class="panel loading">Cargando grupos...</div>
+    <div class="panel loading ui-loader">Cargando grupos...</div>
   } @else if (groups().length === 0) {
     <div class="panel empty-state">
       <h3>No tienes grupos asignados</h3>
       <p>Cuando el coordinador te asigne un grupo podrás hacer su seguimiento aquí.</p>
     </div>
   } @else if (loading()) {
-    <div class="panel loading">Cargando seguimiento...</div>
+    <div class="panel loading ui-loader">Cargando seguimiento...</div>
   } @else if (followUp(); as data) {
 
     <section class="summary-grid">

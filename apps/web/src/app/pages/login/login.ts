@@ -20,6 +20,7 @@ export class Login {
   password = '';
 
   loading = signal(false);
+  showPassword = signal(false);
   errorMessage = signal('');
   successMessage = signal('');
 

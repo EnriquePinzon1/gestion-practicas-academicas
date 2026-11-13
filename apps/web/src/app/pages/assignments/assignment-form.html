@@ -19,7 +19,7 @@
     }
 
     @if (loading()) {
-      <p>Cargando información...</p>
+      <p class="ui-loader">Cargando información...</p>
     } @else {
       <form (ngSubmit)="save()">
         <label class="full">

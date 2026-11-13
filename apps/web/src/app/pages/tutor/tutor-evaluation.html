@@ -18,7 +18,7 @@
     }
 
     @if (loading()) {
-      <p class="muted">Cargando evaluación...</p>
+      <p class="muted ui-loader">Cargando evaluación...</p>
     } @else if (canEvaluate()) {
 
       <form class="observation-form evaluation-form" (ngSubmit)="save()">

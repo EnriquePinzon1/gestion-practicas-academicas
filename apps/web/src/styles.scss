@@ -505,3 +505,75 @@ tbody tr:hover {
   animation-delay: 150ms;
   animation-fill-mode: both;
 }
+
+
+/* ------------------------------------------------------
+   INDICADOR DE CARGA
+   Agregar clase .ui-loader al mensaje "Cargando..."
+   (!important: debe ganar a los estilos locales
+   .loading / .muted de cada página)
+   ------------------------------------------------------ */
+
+:root {
+  --ui-loader-color: #c62828;
+}
+
+.ui-loader {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+
+  color: var(--ui-loader-color) !important;
+
+  font-size: 16px !important;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+
+  animation:
+    ui-loader-pulse 1.4s ease-in-out infinite;
+}
+
+.ui-loader::before {
+  content: '';
+
+  flex-shrink: 0;
+
+  width: 22px;
+  height: 22px;
+
+  border: 3px solid
+    rgba(198, 40, 40, 0.18);
+
+  border-top-color:
+    var(--ui-loader-color);
+
+  border-radius: 50%;
+
+  animation:
+    ui-spin 750ms linear infinite;
+}
+
+@keyframes ui-loader-pulse {
+  50% {
+    opacity: 0.65;
+  }
+}
+
+
+/* ------------------------------------------------------
+   LEGIBILIDAD
+   Tamaño base para controles sin tamaño propio
+   (los navegadores usan 13.33px por defecto)
+   ------------------------------------------------------ */
+
+body {
+  font-size: 16px;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 15px;
+}

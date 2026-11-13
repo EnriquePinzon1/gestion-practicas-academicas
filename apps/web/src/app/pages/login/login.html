@@ -1,60 +1,160 @@
 <div class="login-page">
-  <div class="login-card">
 
-    <div class="brand">
-      <h1>Gestión de Prácticas Académicas</h1>
-      <p>Inicia sesión para continuar</p>
+  <!-- Panel visual -->
+  <section class="visual" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+    <span class="blob blob-3"></span>
+
+    <div class="visual-content">
+      <div class="visual-brand">
+        <span class="brand-mark">GP</span>
+        <span>Prácticas Académicas</span>
+      </div>
+
+      <svg class="illustration" viewBox="0 0 420 300" role="img">
+        <!-- Suelo -->
+        <ellipse cx="210" cy="272" rx="180" ry="14" fill="rgba(255,255,255,0.08)" />
+
+        <!-- Institución -->
+        <g class="building">
+          <polygon points="70,120 170,78 270,120" fill="#e8f1fb" />
+          <rect x="82" y="120" width="176" height="12" rx="2" fill="#cfe1f3" />
+          <rect x="96" y="134" width="16" height="104" rx="3" fill="#ffffff" />
+          <rect x="132" y="134" width="16" height="104" rx="3" fill="#ffffff" />
+          <rect x="192" y="134" width="16" height="104" rx="3" fill="#ffffff" />
+          <rect x="228" y="134" width="16" height="104" rx="3" fill="#ffffff" />
+          <rect x="157" y="180" width="26" height="58" rx="4" fill="#1d5d91" />
+          <rect x="76" y="238" width="188" height="14" rx="3" fill="#cfe1f3" />
+          <circle cx="170" cy="104" r="8" fill="#f5b942" />
+        </g>
+
+        <!-- Birrete -->
+        <g class="float float-1">
+          <polygon points="330,62 380,82 330,102 280,82" fill="#f5b942" />
+          <path d="M300 90 v18 c0 10 60 10 60 0 v-18 l-30 12 z" fill="#e0a12c" />
+          <line x1="372" y1="85" x2="372" y2="112" stroke="#ffffff" stroke-width="3" />
+          <circle cx="372" cy="115" r="4" fill="#ffffff" />
+        </g>
+
+        <!-- Maletín -->
+        <g class="float float-2">
+          <rect x="306" y="172" width="76" height="54" rx="8" fill="#ffffff" />
+          <rect x="330" y="160" width="28" height="14" rx="4" fill="none" stroke="#ffffff" stroke-width="5" />
+          <rect x="306" y="192" width="76" height="6" fill="#cfe1f3" />
+          <rect x="337" y="187" width="14" height="14" rx="3" fill="#1d5d91" />
+        </g>
+
+        <!-- Documento con verificación -->
+        <g class="float float-3">
+          <rect x="18" y="150" width="50" height="64" rx="6" fill="#ffffff" />
+          <rect x="27" y="162" width="32" height="5" rx="2" fill="#cfe1f3" />
+          <rect x="27" y="173" width="24" height="5" rx="2" fill="#cfe1f3" />
+          <rect x="27" y="184" width="28" height="5" rx="2" fill="#cfe1f3" />
+          <circle cx="60" cy="208" r="13" fill="#22a06b" />
+          <path d="M54 208 l4 4 l8 -8" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+        </g>
+      </svg>
+
+      <h2>Del aula a la práctica profesional</h2>
+      <p>
+        Un solo lugar para coordinar, acompañar y evaluar
+        las prácticas académicas de los estudiantes.
+      </p>
+
+      <ul class="features">
+        <li><span>⇄</span> Asignación de estudiantes a instituciones</li>
+        <li><span>✎</span> Actividades, entregas y retroalimentación</li>
+        <li><span>★</span> Seguimiento y evaluación del tutor receptor</li>
+      </ul>
     </div>
+  </section>
 
-    <form (ngSubmit)="login()">
+  <!-- Formulario -->
+  <section class="form-side">
+    <div class="login-card">
 
-      <div class="field">
-        <label for="email">Correo electrónico</label>
-
-        <input
-          id="email"
-          name="email"
-          type="email"
-          [(ngModel)]="email"
-          placeholder="correo@ejemplo.com"
-          autocomplete="email"
-        />
+      <div class="brand">
+        <span class="brand-mark">GP</span>
+        <h1>Bienvenido</h1>
+        <p>Inicia sesión en Gestión de Prácticas Académicas</p>
       </div>
 
-      <div class="field">
-        <label for="password">Contraseña</label>
+      <form (ngSubmit)="login()">
 
-        <input
-          id="password"
-          name="password"
-          type="password"
-          [(ngModel)]="password"
-          placeholder="Ingrese su contraseña"
-          autocomplete="current-password"
-        />
-      </div>
+        <div class="field">
+          <label for="email">Correo electrónico</label>
 
-      <div *ngIf="errorMessage()" class="message error">
- 	 {{ errorMessage() }}
-</div>
+          <div class="input-wrap">
+            <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></svg>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              [(ngModel)]="email"
+              placeholder="correo@ejemplo.com"
+              autocomplete="email"
+            />
+          </div>
+        </div>
 
-<div *ngIf="successMessage()" class="message success">
-  {{ successMessage() }}
-</div>
+        <div class="field">
+          <label for="password">Contraseña</label>
 
-<button type="submit" [disabled]="loading()">
-  {{ loading() ? 'Ingresando...' : 'Iniciar sesión' }}
-</button>
-<button
-  class="recover-button"
-  type="button"
-  [disabled]="loading()"
-  (click)="recoverPassword()"
->
-  ¿Olvidaste tu contraseña?
-</button>
+          <div class="input-wrap">
+            <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+            <input
+              id="password"
+              name="password"
+              [type]="showPassword() ? 'text' : 'password'"
+              [(ngModel)]="password"
+              placeholder="Ingrese su contraseña"
+              autocomplete="current-password"
+            />
+            <button
+              type="button"
+              class="toggle-password"
+              [attr.aria-label]="showPassword() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+              (click)="showPassword.set(!showPassword())"
+            >
+              {{ showPassword() ? 'Ocultar' : 'Ver' }}
+            </button>
+          </div>
+        </div>
 
-    </form>
+        @if (errorMessage()) {
+          <div class="message error">
+            {{ errorMessage() }}
+          </div>
+        }
 
-  </div>
+        @if (successMessage()) {
+          <div class="message success">
+            {{ successMessage() }}
+          </div>
+        }
+
+        <button
+          type="submit"
+          class="submit"
+          [class.ui-loading]="loading()"
+          [disabled]="loading()"
+        >
+          {{ loading() ? 'Ingresando...' : 'Iniciar sesión' }}
+        </button>
+
+        <button
+          class="recover-button"
+          type="button"
+          [disabled]="loading()"
+          (click)="recoverPassword()"
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
+
+      </form>
+
+    </div>
+  </section>
+
 </div>

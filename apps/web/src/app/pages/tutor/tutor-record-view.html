@@ -11,7 +11,7 @@
     }
 
     @if (!loaded()) {
-      <p class="muted">Cargando registro del tutor...</p>
+      <p class="muted ui-loader">Cargando registro del tutor...</p>
     } @else if (!errorMessage()) {
 
       @if (record(); as r) {
