@@ -60,6 +60,8 @@ import { TutorAssignments } from
 import { TutorAssignmentDetail } from
   './pages/tutor/tutor-assignment-detail';
 
+import { Reports } from './pages/reports/reports';
+
 export const appRoutes: Route[] = [
 
   // ==========================================
@@ -177,6 +179,16 @@ export const appRoutes: Route[] = [
   {
     path: 'instituciones/:id',
     component: InstitutionDetail,
+    canActivate: [authGuard],
+  },
+
+  // ==========================================
+  // COORDINADOR - REPORTES POR PERÍODO
+  // ==========================================
+
+  {
+    path: 'reportes',
+    component: Reports,
     canActivate: [authGuard],
   },
 

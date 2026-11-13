@@ -3304,6 +3304,351 @@ app.get(
   }
 );
 
+// ======================================================
+// REPORTES DEL COORDINADOR POR PERÍODO ACADÉMICO
+//
+// Consolida en una sola consulta lo que el coordinador
+// necesita para cerrar o vigilar un período:
+// - Asignaciones por estado, institución y práctica.
+// - Cruces entre GRUPO (seguimiento académico) y
+//   ASIGNACIÓN (dónde y con quién): estudiantes en grupo
+//   sin asignación y asignaciones sin grupo.
+// - Evaluaciones finales del tutor pendientes.
+// Solo devuelve IDs de estudiantes, tutores y docentes;
+// el Gateway resuelve los nombres en User Service.
+// ======================================================
+
+const ASSIGNMENT_STATES = [
+  'ASIGNADA',
+  'EN_CURSO',
+  'FINALIZADA',
+  'CANCELADA',
+] as const;
+
+type AssignmentState = (typeof ASSIGNMENT_STATES)[number];
+
+function emptyStateCount(): Record<AssignmentState, number> {
+  return {
+    ASIGNADA: 0,
+    EN_CURSO: 0,
+    FINALIZADA: 0,
+    CANCELADA: 0,
+  };
+}
+
+// Período vigente según la fecha de Bogotá:
+// enero–junio → AAAA-1, julio–diciembre → AAAA-2.
+function currentAcademicPeriod(): string {
+  const [year, month] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+  })
+    .format(new Date())
+    .split('-')
+    .map(Number);
+
+  return `${year}-${month <= 6 ? 1 : 2}`;
+}
+
+app.get('/api/internal/reports/period', async (req, res) => {
+  const requested =
+    typeof req.query.periodo === 'string'
+      ? req.query.periodo.trim()
+      : '';
+
+  if (requested && !/^\d{4}-[12]$/.test(requested)) {
+    return res.status(400).json({
+      message:
+        'El período académico debe tener el formato AAAA-1 o AAAA-2',
+    });
+  }
+
+  try {
+    const periodsResult = await pool.query(`
+      SELECT periodo_academico
+      FROM practices.asignacion_practica
+      UNION
+      SELECT periodo_academico
+      FROM practices.grupo
+      ORDER BY periodo_academico DESC
+    `);
+
+    const periodos: string[] = periodsResult.rows.map(
+      (row) => row.periodo_academico
+    );
+
+    const current = currentAcademicPeriod();
+
+    const periodo =
+      requested ||
+      (periodos.includes(current) ? current : periodos[0]) ||
+      current;
+
+    const [assignmentsResult, groupsResult] = await Promise.all([
+      pool.query(
+        `
+          SELECT
+            a.id_asignacion,
+            a.id_estudiante,
+            a.id_practica,
+            p.nombre AS practica,
+            a.id_institucion,
+            i.nombre AS institucion,
+            a.id_tutor,
+            a.estado,
+            a.fecha_inicio,
+            ev.id_evaluacion,
+            ev.calificacion::float AS calificacion_tutor,
+            ev.recomienda_aprobacion
+          FROM practices.asignacion_practica a
+          INNER JOIN practices.practica p
+            ON p.id_practica = a.id_practica
+          INNER JOIN practices.institucion i
+            ON i.id_institucion = a.id_institucion
+          LEFT JOIN practices.evaluacion_tutor ev
+            ON ev.id_asignacion = a.id_asignacion
+          WHERE a.periodo_academico = $1
+          ORDER BY a.id_asignacion
+        `,
+        [periodo]
+      ),
+      pool.query(
+        `
+          SELECT
+            g.id_grupo,
+            g.nombre,
+            g.estado,
+            g.id_docente,
+            g.id_practica,
+            p.nombre AS practica,
+            COALESCE(
+              ARRAY_AGG(ge.id_estudiante ORDER BY ge.id_estudiante)
+                FILTER (WHERE ge.id_estudiante IS NOT NULL),
+              '{}'
+            ) AS estudiantes
+          FROM practices.grupo g
+          INNER JOIN practices.practica p
+            ON p.id_practica = g.id_practica
+          LEFT JOIN practices.grupo_estudiante ge
+            ON ge.id_grupo = g.id_grupo
+          WHERE g.periodo_academico = $1
+          GROUP BY g.id_grupo, p.nombre
+          ORDER BY p.nombre, g.nombre
+        `,
+        [periodo]
+      ),
+    ]);
+
+    const assignments = assignmentsResult.rows;
+    const groups = groupsResult.rows.map((group) => ({
+      ...group,
+      estudiantes: (group.estudiantes as unknown[]).map(Number),
+    }));
+
+    // Las canceladas cuentan en los totales por estado, pero
+    // no cubren a un estudiante en los cruces.
+    const active = assignments.filter(
+      (a) => a.estado !== 'CANCELADA'
+    );
+
+    const porEstado = emptyStateCount();
+
+    const institutions = new Map<number, any>();
+    const practices = new Map<number, any>();
+
+    const practiceEntry = (id: number, nombre: string) => {
+      if (!practices.has(id)) {
+        practices.set(id, {
+          id_practica: id,
+          practica: nombre,
+          total: 0,
+          estados: emptyStateCount(),
+          grupos: 0,
+          estudiantes: new Set<number>(),
+        });
+      }
+
+      return practices.get(id);
+    };
+
+    for (const a of assignments) {
+      const state = a.estado as AssignmentState;
+
+      porEstado[state] += 1;
+
+      if (!institutions.has(a.id_institucion)) {
+        institutions.set(a.id_institucion, {
+          id_institucion: a.id_institucion,
+          institucion: a.institucion,
+          total: 0,
+          estados: emptyStateCount(),
+        });
+      }
+
+      const institution = institutions.get(a.id_institucion);
+      institution.total += 1;
+      institution.estados[state] += 1;
+
+      const practice = practiceEntry(a.id_practica, a.practica);
+      practice.total += 1;
+      practice.estados[state] += 1;
+    }
+
+    for (const group of groups) {
+      const practice = practiceEntry(
+        group.id_practica,
+        group.practica
+      );
+
+      practice.grupos += 1;
+
+      // Un estudiante puede estar en varios grupos de la
+      // misma práctica: se cuentan estudiantes únicos.
+      for (const idEstudiante of group.estudiantes) {
+        practice.estudiantes.add(idEstudiante);
+      }
+    }
+
+    const hasAssignment = (idEstudiante: number, idPractica: number) =>
+      active.some(
+        (a) =>
+          a.id_estudiante === idEstudiante &&
+          a.id_practica === idPractica
+      );
+
+    const groupOf = (idEstudiante: number, idPractica: number) =>
+      groups.find(
+        (g) =>
+          g.id_practica === idPractica &&
+          g.estudiantes.includes(idEstudiante)
+      );
+
+    const enGrupoSinAsignacion = groups.flatMap((group) =>
+      group.estudiantes
+        .filter(
+          (idEstudiante: number) =>
+            !hasAssignment(idEstudiante, group.id_practica)
+        )
+        .map((idEstudiante: number) => ({
+          id_estudiante: idEstudiante,
+          id_grupo: group.id_grupo,
+          grupo: group.nombre,
+          id_practica: group.id_practica,
+          practica: group.practica,
+        }))
+    );
+
+    const assignmentRef = (a: any) => ({
+      id_asignacion: a.id_asignacion,
+      id_estudiante: a.id_estudiante,
+      id_practica: a.id_practica,
+      practica: a.practica,
+      institucion: a.institucion,
+      id_tutor: a.id_tutor,
+      estado: a.estado,
+      fecha_inicio: a.fecha_inicio,
+    });
+
+    const asignacionSinGrupo = active
+      .filter((a) => !groupOf(a.id_estudiante, a.id_practica))
+      .map(assignmentRef);
+
+    // El tutor solo puede evaluar una asignación EN_CURSO;
+    // las ASIGNADAS con tutor aún no están pendientes.
+    const evaluacionesPendientes = active
+      .filter(
+        (a) =>
+          a.estado === 'EN_CURSO' &&
+          a.id_tutor !== null &&
+          a.id_evaluacion === null
+      )
+      .map(assignmentRef);
+
+    // Sin tutor no habrá evaluación del tutor al finalizar.
+    const sinTutor = active
+      .filter(
+        (a) =>
+          a.id_tutor === null &&
+          (a.estado === 'ASIGNADA' || a.estado === 'EN_CURSO')
+      )
+      .map(assignmentRef);
+
+    const evaluated = assignments.filter(
+      (a) => a.id_evaluacion !== null
+    );
+
+    const promedioTutor = evaluated.length
+      ? Math.round(
+          (evaluated.reduce(
+            (sum, a) => sum + a.calificacion_tutor,
+            0
+          ) /
+            evaluated.length) *
+            10
+        ) / 10
+      : null;
+
+    const byName = (key: string) => (a: any, b: any) =>
+      String(a[key]).localeCompare(String(b[key]), 'es');
+
+    return res.json({
+      data: {
+        periodo,
+        periodos,
+        resumen: {
+          total_asignaciones: assignments.length,
+          por_estado: porEstado,
+          estudiantes_asignados: new Set(
+            active.map((a) => a.id_estudiante)
+          ).size,
+          total_grupos: groups.length,
+          estudiantes_en_grupos: new Set(
+            groups.flatMap((g) => g.estudiantes)
+          ).size,
+        },
+        por_institucion: [...institutions.values()].sort(
+          byName('institucion')
+        ),
+        por_practica: [...practices.values()]
+          .map(({ estudiantes, ...practice }) => ({
+            ...practice,
+            estudiantes_en_grupos: estudiantes.size,
+          }))
+          .sort(byName('practica')),
+        grupos: groups.map((group) => ({
+          id_grupo: group.id_grupo,
+          nombre: group.nombre,
+          estado: group.estado,
+          id_docente: group.id_docente,
+          id_practica: group.id_practica,
+          practica: group.practica,
+          total_estudiantes: group.estudiantes.length,
+        })),
+        cruces: {
+          en_grupo_sin_asignacion: enGrupoSinAsignacion,
+          asignacion_sin_grupo: asignacionSinGrupo,
+        },
+        evaluaciones_tutor: {
+          registradas: evaluated.length,
+          promedio: promedioTutor,
+          recomiendan_aprobacion: evaluated.filter(
+            (a) => a.recomienda_aprobacion
+          ).length,
+          pendientes: evaluacionesPendientes,
+          sin_tutor: sinTutor,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error generando reporte del período:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible generar el reporte del período',
+    });
+  }
+});
+
 const port = process.env.PORT || 3335;
 
 const server = app.listen(port, () => {

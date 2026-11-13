@@ -2294,6 +2294,216 @@ app.get(
 );
 
 // ========================================================
+// COORDINADOR - REPORTE POR PERÍODO ACADÉMICO
+// Practice Service arma el consolidado (solo IDs); aquí se
+// suman el avance académico (Activity Service) y los
+// nombres (User Service). Si un servicio secundario falla,
+// el reporte se entrega igual y se informa qué faltó.
+// ========================================================
+
+// GET a un servicio interno; devuelve body.data o null.
+async function fetchInternalData<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const body = (await response.json()) as { data?: T };
+
+    return body.data ?? null;
+  } catch (error) {
+    console.error('Error consultando ' + url + ':', error);
+
+    return null;
+  }
+}
+
+function personName(person: any): string | null {
+  return person
+    ? `${person.nombres} ${person.apellidos}`.trim()
+    : null;
+}
+
+app.get(
+  '/api/reports/period',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    const periodo =
+      typeof req.query.periodo === 'string'
+        ? req.query.periodo
+        : '';
+
+    let report: any;
+
+    try {
+      const response = await fetch(
+        'http://localhost:3335/api/internal/reports/period' +
+          (periodo
+            ? '?periodo=' + encodeURIComponent(periodo)
+            : '')
+      );
+
+      const body: any = await response.json();
+
+      if (!response.ok) {
+        return res.status(response.status).json(body);
+      }
+
+      report = body.data;
+    } catch (error) {
+      console.error('Error consultando reporte del período:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+
+    const groupIds: number[] = report.grupos.map(
+      (group: any) => group.id_grupo
+    );
+
+    const assignmentLists: any[][] = [
+      report.cruces.asignacion_sin_grupo,
+      report.evaluaciones_tutor.pendientes,
+      report.evaluaciones_tutor.sin_tutor,
+    ];
+
+    const studentIds = [
+      ...new Set<number>([
+        ...report.cruces.en_grupo_sin_asignacion.map(
+          (row: any) => row.id_estudiante
+        ),
+        ...assignmentLists.flat().map((row) => row.id_estudiante),
+      ]),
+    ];
+
+    const [progress, students, teachers, tutors] =
+      await Promise.all([
+        groupIds.length
+          ? fetchInternalData<any[]>(
+              'http://localhost:3336/api/internal/reports/groups-progress?ids=' +
+                groupIds.join(',')
+            )
+          : Promise.resolve([]),
+        studentIds.length
+          ? fetchInternalData<any[]>(
+              'http://localhost:3334/api/internal/students/by-ids?ids=' +
+                studentIds.join(',')
+            )
+          : Promise.resolve([]),
+        fetchInternalData<any[]>(
+          'http://localhost:3334/api/internal/teachers/available'
+        ),
+        fetchInternalData<any[]>(
+          'http://localhost:3334/api/internal/tutors/available'
+        ),
+      ]);
+
+    const progressByGroup = new Map(
+      (progress ?? []).map((row) => [Number(row.id_grupo), row])
+    );
+
+    const studentById = new Map(
+      (students ?? []).map((row) => [Number(row.id_estudiante), row])
+    );
+
+    const teacherById = new Map(
+      (teachers ?? []).map((row) => [Number(row.id_docente), row])
+    );
+
+    const tutorById = new Map(
+      (tutors ?? []).map((row) => [Number(row.id_tutor), row])
+    );
+
+    const withStudent = (row: any) => {
+      const student = studentById.get(Number(row.id_estudiante));
+
+      return {
+        ...row,
+        estudiante: personName(student),
+        codigo_estudiante: student?.codigo_estudiante ?? null,
+        estado_estudiante: student?.estado ?? null,
+      };
+    };
+
+    const withTutor = (row: any) => ({
+      ...withStudent(row),
+      tutor:
+        row.id_tutor === null
+          ? null
+          : personName(tutorById.get(Number(row.id_tutor))),
+    });
+
+    const emptyProgress = {
+      actividades: 0,
+      actividades_abiertas: 0,
+      esperadas: 0,
+      entregadas: 0,
+      calificadas: 0,
+      no_entregadas: 0,
+      pendientes: 0,
+      promedio: null,
+    };
+
+    const avisos: string[] = [];
+
+    if (groupIds.length && progress === null) {
+      avisos.push(
+        'No fue posible consultar el avance académico (Activity Service).'
+      );
+    }
+
+    if (
+      (studentIds.length && students === null) ||
+      teachers === null ||
+      tutors === null
+    ) {
+      avisos.push(
+        'No fue posible consultar algunos nombres (User Service).'
+      );
+    }
+
+    return res.json({
+      data: {
+        ...report,
+        grupos: report.grupos.map((group: any) => {
+          const { id_grupo: _id, ...avance } =
+            progressByGroup.get(Number(group.id_grupo)) ?? {
+              id_grupo: group.id_grupo,
+              ...emptyProgress,
+            };
+
+          return {
+            ...group,
+            docente: personName(
+              teacherById.get(Number(group.id_docente))
+            ),
+            avance: progress === null ? null : avance,
+          };
+        }),
+        cruces: {
+          en_grupo_sin_asignacion:
+            report.cruces.en_grupo_sin_asignacion.map(withStudent),
+          asignacion_sin_grupo:
+            report.cruces.asignacion_sin_grupo.map(withTutor),
+        },
+        evaluaciones_tutor: {
+          ...report.evaluaciones_tutor,
+          pendientes:
+            report.evaluaciones_tutor.pendientes.map(withTutor),
+          sin_tutor:
+            report.evaluaciones_tutor.sin_tutor.map(withStudent),
+        },
+        avisos,
+      },
+    });
+  }
+);
+
+// ========================================================
 // ENTREGAS - ESTUDIANTE
 // El id del estudiante sale siempre del token, nunca del
 // cliente: solo puede ver y entregar sus actividades.

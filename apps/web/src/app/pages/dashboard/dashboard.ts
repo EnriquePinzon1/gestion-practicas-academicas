@@ -447,6 +447,12 @@ export class Dashboard {
     ]);
   }
 
+  goToReports() {
+    this.router.navigate([
+      '/reportes',
+    ]);
+  }
+
   newUser() {
     this.router.navigate([
       '/usuarios/nuevo',

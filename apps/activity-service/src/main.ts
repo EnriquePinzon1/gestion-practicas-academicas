@@ -2813,6 +2813,92 @@ app.get(
   }
 );
 
+// ======================================================
+// REPORTES DEL COORDINADOR: AVANCE ACADÉMICO POR GRUPO
+//
+// Agregado del snapshot actividad_estudiante con los mismos
+// estados derivados del historial de seguimiento. "entregadas"
+// incluye las calificadas; pendientes = abiertas y en plazo.
+// Uso: ?ids=1,2,3 (máx. 200). Grupos sin actividades no
+// aparecen; quien consume los completa con ceros.
+// ======================================================
+
+app.get('/api/internal/reports/groups-progress', async (req, res) => {
+  const ids = [
+    ...new Set(
+      String(req.query.ids ?? '')
+        .split(',')
+        .map((value) => positiveInt(value.trim()))
+        .filter((value): value is number => value !== null)
+    ),
+  ];
+
+  if (ids.length === 0) {
+    return res.json({ data: [] });
+  }
+
+  if (ids.length > 200) {
+    return res.status(400).json({
+      message: 'Se pueden consultar máximo 200 grupos',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          a.id_grupo,
+          COUNT(DISTINCT a.id_actividad)::int AS actividades,
+          COUNT(DISTINCT a.id_actividad) FILTER (
+            WHERE a.estado = 'ABIERTA'
+          )::int AS actividades_abiertas,
+          COUNT(ae.id_actividad_estudiante)::int AS esperadas,
+          COUNT(en.id_entrega)::int AS entregadas,
+          COUNT(rt.id_retroalimentacion)::int AS calificadas,
+          COUNT(ae.id_actividad_estudiante) FILTER (
+            WHERE en.id_entrega IS NULL
+              AND (
+                a.estado <> 'ABIERTA'
+                OR (
+                  (a.fecha_limite + a.hora_limite)
+                  AT TIME ZONE 'America/Bogota'
+                ) <= NOW()
+              )
+          )::int AS no_entregadas,
+          ROUND(AVG(rt.calificacion), 1)::float AS promedio
+        FROM activities.actividad a
+        LEFT JOIN activities.actividad_estudiante ae
+          ON ae.id_actividad = a.id_actividad
+        LEFT JOIN activities.entrega en
+          ON en.id_actividad_estudiante =
+             ae.id_actividad_estudiante
+        LEFT JOIN activities.retroalimentacion rt
+          ON rt.id_entrega = en.id_entrega
+        WHERE a.id_grupo = ANY($1::int[])
+        GROUP BY a.id_grupo
+      `,
+      [ids]
+    );
+
+    return res.json({
+      data: result.rows.map((row) => ({
+        ...row,
+        pendientes:
+          row.esperadas - row.entregadas - row.no_entregadas,
+      })),
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando avance académico de grupos:',
+      error
+    );
+
+    return res.status(500).json({
+      message: 'No fue posible consultar el avance académico',
+    });
+  }
+});
+
 // ------------------------------------------------------
 // Errores de lectura del cuerpo (tamaño, JSON inválido)
 // ------------------------------------------------------
