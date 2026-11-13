@@ -4,6 +4,10 @@
   "license": "MIT",
   "scripts": {},
   "private": true,
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": "22.x"
+  },
   "dependencies": {
     "@angular/common": "~22.1.0",
     "@angular/compiler": "~22.1.0",
