@@ -577,3 +577,8 @@ textarea {
   font-family: inherit;
   font-size: 15px;
 }
+
+/* <small> del navegador (~13px) es poco legible */
+small {
+  font-size: 14px;
+}

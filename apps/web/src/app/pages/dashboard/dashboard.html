@@ -642,7 +642,10 @@
                   <span>
                     Fecha límite:
                     {{
-                      actividad.fecha_limite
+                      fechaLimite(
+                        actividad.fecha_limite,
+                        actividad.hora_limite
+                      )
                     }}
                     ·
                     {{
