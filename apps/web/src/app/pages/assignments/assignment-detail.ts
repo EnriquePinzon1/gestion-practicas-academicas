@@ -14,12 +14,12 @@ import {
   AccionEstado,
   Asignacion,
   ETIQUETAS_ESTADO,
-  EstudianteDisponible,
-  TutorDisponible,
   accionesDisponibles,
+  estudianteInactivo,
   formatearFecha,
   nombreEstudiante,
   nombreTutor,
+  tutorInactivo,
 } from './assignment.model';
 import { TutorRecordView } from '../tutor/tutor-record-view';
 
@@ -37,14 +37,6 @@ export class AssignmentDetail
     null
   );
 
-  estudiantes = signal(
-    new Map<number, EstudianteDisponible>()
-  );
-
-  tutores = signal(
-    new Map<number, TutorDisponible>()
-  );
-
   loading = signal(false);
   updating = signal(false);
 
@@ -53,6 +45,8 @@ export class AssignmentDetail
 
   readonly etiquetas = ETIQUETAS_ESTADO;
   readonly formatearFecha = formatearFecha;
+  readonly estudianteInactivo = estudianteInactivo;
+  readonly tutorInactivo = tutorInactivo;
 
   acciones = computed<AccionEstado[]>(() => {
     const asignacion = this.asignacion();
@@ -62,36 +56,20 @@ export class AssignmentDetail
       : [];
   });
 
-  estudiante = computed(() => {
-    const asignacion = this.asignacion();
-
-    return asignacion
-      ? this.estudiantes().get(
-          asignacion.id_estudiante
-        ) ?? null
-      : null;
-  });
+  estudiante = computed(
+    () => this.asignacion()?.estudiante ?? null
+  );
 
   nombreEstudiante = computed(() => {
     const asignacion = this.asignacion();
 
-    return asignacion
-      ? nombreEstudiante(
-          asignacion.id_estudiante,
-          this.estudiantes()
-        )
-      : '';
+    return asignacion ? nombreEstudiante(asignacion) : '';
   });
 
   nombreTutor = computed(() => {
     const asignacion = this.asignacion();
 
-    return asignacion
-      ? nombreTutor(
-          asignacion.id_tutor,
-          this.tutores()
-        )
-      : '';
+    return asignacion ? nombreTutor(asignacion) : '';
   });
 
   constructor(
@@ -120,47 +98,13 @@ export class AssignmentDetail
     this.errorMessage.set('');
 
     try {
-      const [
-        assignmentResponse,
-        studentsResponse,
-        tutorsResponse,
-      ] = await Promise.all([
-        this.api.get<{
-          data: Asignacion;
-        }>('/practice-assignments/' + id),
+      // Estudiante y tutor vienen resueltos por el
+      // Gateway (incluye usuarios inactivos).
+      const response = await this.api.get<{
+        data: Asignacion;
+      }>('/practice-assignments/' + id);
 
-        this.api.get<{
-          data: EstudianteDisponible[];
-        }>(
-          '/practice-assignment-options/students'
-        ),
-
-        this.api.get<{
-          data: TutorDisponible[];
-        }>(
-          '/practice-assignment-options/tutors'
-        ),
-      ]);
-
-      this.asignacion.set(
-        assignmentResponse.data
-      );
-
-      this.estudiantes.set(
-        new Map(
-          studentsResponse.data.map(
-            (e) => [e.id_estudiante, e]
-          )
-        )
-      );
-
-      this.tutores.set(
-        new Map(
-          tutorsResponse.data.map(
-            (t) => [t.id_tutor, t]
-          )
-        )
-      );
+      this.asignacion.set(response.data);
     } catch (error) {
       this.errorMessage.set(
         error instanceof Error

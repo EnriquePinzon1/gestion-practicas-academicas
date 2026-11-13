@@ -1261,6 +1261,64 @@ app.get('/api/internal/students/by-ids', async (req, res) => {
   }
 });
 
+// ======================================================
+// TUTORES RECEPTORES POR IDENTIFICADORES
+// Incluye inactivos: las asignaciones conservan al tutor
+// aunque hoy esté inactivo. Uso: ?ids=1,2,3 (máx. 500)
+// ======================================================
+
+app.get('/api/internal/tutors/by-ids', async (req, res) => {
+  const ids = String(req.query.ids ?? '')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) {
+    return res.json({ data: [] });
+  }
+
+  if (uniqueIds.length > 500) {
+    return res.status(400).json({
+      message: 'Se pueden consultar máximo 500 tutores',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          t.id_tutor,
+          u.nombres,
+          u.apellidos,
+          u.correo,
+          u.estado,
+          t.cargo
+        FROM users.tutor_receptor t
+        INNER JOIN users.usuario u
+          ON u.id_usuario = t.id_usuario
+        WHERE t.id_tutor = ANY($1::int[])
+        ORDER BY u.nombres, u.apellidos
+      `,
+      [uniqueIds]
+    );
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando tutores por identificadores:',
+      error
+    );
+
+    return res.status(500).json({
+      message: 'No fue posible consultar los tutores',
+    });
+  }
+});
+
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {

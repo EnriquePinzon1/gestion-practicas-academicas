@@ -24,6 +24,26 @@ export interface Asignacion {
   fecha_fin: string | null;
   creado_en: string;
   actualizado_en: string;
+  // El Gateway los resuelve por ID (incluye inactivos);
+  // null si User Service no respondió o no hay tutor.
+  estudiante: EstudianteAsignacion | null;
+  tutor: TutorAsignacion | null;
+}
+
+export interface EstudianteAsignacion {
+  nombres: string;
+  apellidos: string;
+  correo: string;
+  codigo_estudiante: string;
+  estado: string;
+}
+
+export interface TutorAsignacion {
+  nombres: string;
+  apellidos: string;
+  correo: string;
+  cargo: string | null;
+  estado: string;
 }
 
 export interface EstudianteDisponible {
@@ -131,28 +151,43 @@ export function formatearFecha(
 }
 
 export function nombreEstudiante(
-  idEstudiante: number,
-  estudiantes: Map<number, EstudianteDisponible>
+  asignacion: Asignacion
 ): string {
-  const estudiante =
-    estudiantes.get(idEstudiante);
+  const estudiante = asignacion.estudiante;
 
   return estudiante
     ? `${estudiante.nombres} ${estudiante.apellidos}`
-    : `Estudiante #${idEstudiante}`;
+    : `Estudiante #${asignacion.id_estudiante}`;
 }
 
 export function nombreTutor(
-  idTutor: number | null,
-  tutores: Map<number, TutorDisponible>
+  asignacion: Asignacion
 ): string {
-  if (idTutor === null) {
+  if (asignacion.id_tutor === null) {
     return 'Sin tutor asignado';
   }
 
-  const tutor = tutores.get(idTutor);
+  const tutor = asignacion.tutor;
 
   return tutor
     ? `${tutor.nombres} ${tutor.apellidos}`
-    : `Tutor #${idTutor}`;
+    : `Tutor #${asignacion.id_tutor}`;
+}
+
+export function estudianteInactivo(
+  asignacion: Asignacion
+): boolean {
+  return (
+    !!asignacion.estudiante &&
+    asignacion.estudiante.estado !== 'ACTIVO'
+  );
+}
+
+export function tutorInactivo(
+  asignacion: Asignacion
+): boolean {
+  return (
+    !!asignacion.tutor &&
+    asignacion.tutor.estado !== 'ACTIVO'
+  );
 }

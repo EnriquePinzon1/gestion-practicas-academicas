@@ -71,9 +71,15 @@
             <small>
               Código {{ e.codigo_estudiante }} · {{ e.correo }}
             </small>
+
+            @if (estudianteInactivo(a)) {
+              <small class="inactive-note">
+                El estudiante se encuentra inactivo actualmente.
+              </small>
+            }
           } @else {
             <small>
-              El estudiante no figura como activo actualmente.
+              No fue posible consultar los datos del estudiante.
             </small>
           }
         </div>
@@ -93,6 +99,18 @@
           <p [class.muted]="a.id_tutor === null">
             {{ nombreTutor() }}
           </p>
+
+          @if (a.tutor; as t) {
+            <small>
+              {{ t.cargo ? t.cargo + ' · ' : '' }}{{ t.correo }}
+            </small>
+          }
+
+          @if (tutorInactivo(a)) {
+            <small class="inactive-note">
+              El tutor se encuentra inactivo actualmente.
+            </small>
+          }
         </div>
 
         <div>

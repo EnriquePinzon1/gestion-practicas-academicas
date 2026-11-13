@@ -100,6 +100,9 @@
             <tr>
               <td class="strong">
                 {{ estudiante(asignacion) }}
+                @if (estudianteInactivo(asignacion)) {
+                  <span class="inactive-tag">Inactivo</span>
+                }
               </td>
 
               <td>{{ asignacion.practica }}</td>
@@ -112,6 +115,9 @@
                 "
               >
                 {{ tutor(asignacion) }}
+                @if (tutorInactivo(asignacion)) {
+                  <span class="inactive-tag">Inactivo</span>
+                }
               </td>
 
               <td class="nowrap">{{ asignacion.periodo_academico }}</td>

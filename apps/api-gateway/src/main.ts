@@ -1183,6 +1183,81 @@ app.get(
   }
 );
 
+// ========================================================
+// ASIGNACIONES: IDENTIDAD DE ESTUDIANTE Y TUTOR
+// Practice Service solo guarda IDs. Se consultan por IDs
+// (incluye inactivos) para que una asignación histórica
+// siga mostrando a quién pertenece. Si User Service no
+// responde, se devuelven con estudiante/tutor en null.
+// ========================================================
+
+async function withAssignmentPeople(assignments: any[]) {
+  const studentIds = [
+    ...new Set(assignments.map((a) => Number(a.id_estudiante))),
+  ];
+
+  const tutorIds = [
+    ...new Set(
+      assignments
+        .filter((a) => a.id_tutor !== null)
+        .map((a) => Number(a.id_tutor))
+    ),
+  ];
+
+  const [students, tutors] = await Promise.all([
+    studentIds.length
+      ? fetchInternalData<any[]>(
+          'http://localhost:3334/api/internal/students/by-ids?ids=' +
+            studentIds.join(',')
+        )
+      : Promise.resolve([]),
+    tutorIds.length
+      ? fetchInternalData<any[]>(
+          'http://localhost:3334/api/internal/tutors/by-ids?ids=' +
+            tutorIds.join(',')
+        )
+      : Promise.resolve([]),
+  ]);
+
+  const studentById = new Map(
+    (students ?? []).map((row) => [Number(row.id_estudiante), row])
+  );
+
+  const tutorById = new Map(
+    (tutors ?? []).map((row) => [Number(row.id_tutor), row])
+  );
+
+  return assignments.map((a) => {
+    const student = studentById.get(Number(a.id_estudiante));
+    const tutor =
+      a.id_tutor === null
+        ? undefined
+        : tutorById.get(Number(a.id_tutor));
+
+    return {
+      ...a,
+      estudiante: student
+        ? {
+            nombres: student.nombres,
+            apellidos: student.apellidos,
+            correo: student.correo,
+            codigo_estudiante: student.codigo_estudiante,
+            estado: student.estado,
+          }
+        : null,
+      tutor: tutor
+        ? {
+            nombres: tutor.nombres,
+            apellidos: tutor.apellidos,
+            correo: tutor.correo,
+            cargo: tutor.cargo,
+            estado: tutor.estado,
+          }
+        : null,
+    };
+  });
+}
+
 // Listar asignaciones
 app.get(
   '/api/practice-assignments',
@@ -1194,11 +1269,15 @@ app.get(
         'http://localhost:3335/api/practice-assignments'
       );
 
-      const data = await response.json();
+      const body: any = await response.json();
 
-      return res
-        .status(response.status)
-        .json(data);
+      if (!response.ok) {
+        return res.status(response.status).json(body);
+      }
+
+      return res.json({
+        data: await withAssignmentPeople(body.data ?? []),
+      });
     } catch (error) {
       console.error(
         'Error consultando asignaciones de práctica:',
@@ -1222,14 +1301,18 @@ app.get(
     try {
       const response = await fetch(
         'http://localhost:3335/api/practice-assignments/' +
-          req.params.id
+          encodeURIComponent(String(req.params.id))
       );
 
-      const data = await response.json();
+      const body: any = await response.json();
 
-      return res
-        .status(response.status)
-        .json(data);
+      if (!response.ok) {
+        return res.status(response.status).json(body);
+      }
+
+      const [data] = await withAssignmentPeople([body.data]);
+
+      return res.json({ data });
     } catch (error) {
       console.error(
         'Error consultando asignación de práctica:',
@@ -2380,6 +2463,15 @@ app.get(
       ]),
     ];
 
+    const tutorIds = [
+      ...new Set<number>(
+        assignmentLists
+          .flat()
+          .filter((row) => row.id_tutor !== null)
+          .map((row) => row.id_tutor)
+      ),
+    ];
+
     const [progress, students, teachers, tutors] =
       await Promise.all([
         groupIds.length
@@ -2397,9 +2489,12 @@ app.get(
         fetchInternalData<any[]>(
           'http://localhost:3334/api/internal/teachers/available'
         ),
-        fetchInternalData<any[]>(
-          'http://localhost:3334/api/internal/tutors/available'
-        ),
+        tutorIds.length
+          ? fetchInternalData<any[]>(
+              'http://localhost:3334/api/internal/tutors/by-ids?ids=' +
+                tutorIds.join(',')
+            )
+          : Promise.resolve([]),
       ]);
 
     const progressByGroup = new Map(
@@ -2459,7 +2554,7 @@ app.get(
     if (
       (studentIds.length && students === null) ||
       teachers === null ||
-      tutors === null
+      (tutorIds.length && tutors === null)
     ) {
       avisos.push(
         'No fue posible consultar algunos nombres (User Service).'

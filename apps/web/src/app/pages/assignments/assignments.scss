@@ -266,3 +266,18 @@ td.muted {
     grid-template-columns: 1fr;
   }
 }
+
+// Estudiante o tutor inactivo en una asignación histórica
+.inactive-tag {
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}

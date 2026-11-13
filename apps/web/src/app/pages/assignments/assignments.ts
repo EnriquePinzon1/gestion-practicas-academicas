@@ -12,12 +12,12 @@ import {
   Asignacion,
   ETIQUETAS_ESTADO,
   EstadoAsignacion,
-  EstudianteDisponible,
-  TutorDisponible,
   accionesDisponibles,
+  estudianteInactivo,
   formatearFecha,
   nombreEstudiante,
   nombreTutor,
+  tutorInactivo,
 } from './assignment.model';
 
 @Component({
@@ -33,14 +33,6 @@ import {
 export class Assignments {
   asignaciones = signal<Asignacion[]>([]);
 
-  estudiantes = signal(
-    new Map<number, EstudianteDisponible>()
-  );
-
-  tutores = signal(
-    new Map<number, TutorDisponible>()
-  );
-
   loading = signal(false);
   updatingId = signal<number | null>(null);
 
@@ -53,6 +45,8 @@ export class Assignments {
 
   readonly etiquetas = ETIQUETAS_ESTADO;
   readonly formatearFecha = formatearFecha;
+  readonly estudianteInactivo = estudianteInactivo;
+  readonly tutorInactivo = tutorInactivo;
 
   constructor(
     private readonly api: ApiService,
@@ -107,47 +101,13 @@ export class Assignments {
     this.errorMessage.set('');
 
     try {
-      const [
-        assignmentsResponse,
-        studentsResponse,
-        tutorsResponse,
-      ] = await Promise.all([
-        this.api.get<{
-          data: Asignacion[];
-        }>('/practice-assignments'),
+      // Nombres de estudiante y tutor vienen resueltos
+      // por el Gateway (incluye usuarios inactivos).
+      const response = await this.api.get<{
+        data: Asignacion[];
+      }>('/practice-assignments');
 
-        this.api.get<{
-          data: EstudianteDisponible[];
-        }>(
-          '/practice-assignment-options/students'
-        ),
-
-        this.api.get<{
-          data: TutorDisponible[];
-        }>(
-          '/practice-assignment-options/tutors'
-        ),
-      ]);
-
-      this.asignaciones.set(
-        assignmentsResponse.data
-      );
-
-      this.estudiantes.set(
-        new Map(
-          studentsResponse.data.map(
-            (e) => [e.id_estudiante, e]
-          )
-        )
-      );
-
-      this.tutores.set(
-        new Map(
-          tutorsResponse.data.map(
-            (t) => [t.id_tutor, t]
-          )
-        )
-      );
+      this.asignaciones.set(response.data);
     } catch (error) {
       this.errorMessage.set(
         error instanceof Error
@@ -160,17 +120,11 @@ export class Assignments {
   }
 
   estudiante(asignacion: Asignacion) {
-    return nombreEstudiante(
-      asignacion.id_estudiante,
-      this.estudiantes()
-    );
+    return nombreEstudiante(asignacion);
   }
 
   tutor(asignacion: Asignacion) {
-    return nombreTutor(
-      asignacion.id_tutor,
-      this.tutores()
-    );
+    return nombreTutor(asignacion);
   }
 
   acciones(
