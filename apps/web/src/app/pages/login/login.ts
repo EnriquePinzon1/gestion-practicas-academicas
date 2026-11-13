@@ -103,8 +103,10 @@ export class Login {
         await supabase.auth.resetPasswordForEmail(
           email,
           {
+            // Mismo dominio desde el que se abrió la app
+            // (localhost en desarrollo, Vercel en producción).
             redirectTo:
-              'http://localhost:4200/reset-password',
+              `${window.location.origin}/reset-password`,
           }
         );
 

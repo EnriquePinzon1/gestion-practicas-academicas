@@ -1,18 +1,39 @@
 import 'dotenv/config';
 import express from 'express';
 import { pool } from './database/database';
+import {
+  createInternalFetch,
+  readInternalToken,
+  requireInternalToken,
+  resolveServiceUrl,
+} from '@gestion-practicas/service-http';
+
+// ======================================================
+// COMUNICACIÓN ENTRE SERVICIOS
+// ======================================================
+
+const INTERNAL_API_TOKEN = readInternalToken();
+const internalFetch = createInternalFetch(INTERNAL_API_TOKEN);
+
+const USER_SERVICE_URL = resolveServiceUrl(
+  'USER_SERVICE_URL',
+  'http://localhost:3334'
+);
 
 const app = express();
 
 app.use(express.json());
 
-// Health del microservicio
+// Health del microservicio (público: solo indica que responde)
 app.get('/api', (_req, res) => {
   return res.json({
     service: 'practice-service',
     status: 'ok',
   });
 });
+
+// El resto de rutas solo atiende al Gateway y a otros servicios.
+app.use('/api', requireInternalToken(INTERNAL_API_TOKEN));
 
 // Health de base de datos
 app.get('/api/database/health', async (_req, res) => {
@@ -218,8 +239,8 @@ async function findInstitution(idInstitucion: number) {
 async function fetchAvailableTutors(): Promise<
   Map<number, any>
 > {
-  const response = await fetch(
-    'http://localhost:3334/api/internal/tutors/available'
+  const response = await internalFetch(
+    USER_SERVICE_URL + '/api/internal/tutors/available'
   );
 
   if (!response.ok) {
@@ -1197,8 +1218,8 @@ app.post(
       // ----------------------------------------------
 
       const studentsResponse =
-        await fetch(
-          'http://localhost:3334/api/internal/students/available'
+        await internalFetch(
+          USER_SERVICE_URL + '/api/internal/students/available'
         );
 
       if (!studentsResponse.ok) {
@@ -1246,8 +1267,8 @@ app.post(
 
       if (idTutor !== null) {
         const tutorsResponse =
-          await fetch(
-            'http://localhost:3334/api/internal/tutors/available'
+          await internalFetch(
+            USER_SERVICE_URL + '/api/internal/tutors/available'
           );
 
         if (!tutorsResponse.ok) {
@@ -1777,8 +1798,8 @@ app.post('/api/groups', async (req, res) => {
     // Consultar docentes activos
     // --------------------------------------------------
 
-    const teachersResponse = await fetch(
-      'http://localhost:3334/api/internal/teachers/available'
+    const teachersResponse = await internalFetch(
+      USER_SERVICE_URL + '/api/internal/teachers/available'
     );
 
     if (!teachersResponse.ok) {
@@ -1806,8 +1827,8 @@ app.post('/api/groups', async (req, res) => {
     // Consultar estudiantes activos
     // --------------------------------------------------
 
-    const studentsResponse = await fetch(
-      'http://localhost:3334/api/internal/students/available'
+    const studentsResponse = await internalFetch(
+      USER_SERVICE_URL + '/api/internal/students/available'
     );
 
     if (!studentsResponse.ok) {
@@ -1985,12 +2006,12 @@ app.get('/api/groups/:id', async (req, res) => {
       [idGrupo]
     );
 
-    const teachersResponse = await fetch(
-      'http://localhost:3334/api/internal/teachers/available'
+    const teachersResponse = await internalFetch(
+      USER_SERVICE_URL + '/api/internal/teachers/available'
     );
 
-    const studentsResponse = await fetch(
-      'http://localhost:3334/api/internal/students/available'
+    const studentsResponse = await internalFetch(
+      USER_SERVICE_URL + '/api/internal/students/available'
     );
 
     const teachersBody: any =
@@ -2128,8 +2149,8 @@ app.patch('/api/groups/:id', async (req, res) => {
     }
 
     const teachersResponse =
-      await fetch(
-        'http://localhost:3334/api/internal/teachers/available'
+      await internalFetch(
+        USER_SERVICE_URL + '/api/internal/teachers/available'
       );
 
     if (!teachersResponse.ok) {
@@ -2447,13 +2468,13 @@ async function withTutorAssignmentNames(rows: any[]) {
     const [studentsResponse, teachersResponse] =
       await Promise.all([
         studentIds.length
-          ? fetch(
-              'http://localhost:3334/api/internal/students/by-ids?ids=' +
+          ? internalFetch(
+              USER_SERVICE_URL + '/api/internal/students/by-ids?ids=' +
                 studentIds.join(',')
             )
           : null,
-        fetch(
-          'http://localhost:3334/api/internal/teachers/available'
+        internalFetch(
+          USER_SERVICE_URL + '/api/internal/teachers/available'
         ),
       ]);
 

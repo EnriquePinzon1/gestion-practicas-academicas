@@ -3,13 +3,31 @@ import 'dotenv/config';
 import express from 'express';
 import { pool } from './database/database';
 import { supabaseAdmin } from './supabase/admin';
+import {
+  createInternalFetch,
+  readInternalToken,
+  requireInternalToken,
+  resolveServiceUrl,
+} from '@gestion-practicas/service-http';
+
+// ========================================================
+// COMUNICACIÓN ENTRE SERVICIOS
+// ========================================================
+
+const INTERNAL_API_TOKEN = readInternalToken();
+const internalFetch = createInternalFetch(INTERNAL_API_TOKEN);
+
+const PRACTICE_SERVICE_URL = resolveServiceUrl(
+  'PRACTICE_SERVICE_URL',
+  'http://localhost:3335'
+);
 
 const app = express();
 
 app.use(express.json());
 
 // ========================================================
-// HEALTH
+// HEALTH (público: solo indica que el servicio responde)
 // ========================================================
 
 app.get('/api', (_req, res) => {
@@ -18,6 +36,9 @@ app.get('/api', (_req, res) => {
     status: 'ok',
   });
 });
+
+// El resto de rutas solo atiende al Gateway y a otros servicios.
+app.use('/api', requireInternalToken(INTERNAL_API_TOKEN));
 
 // ========================================================
 // DATABASE HEALTH
@@ -208,8 +229,8 @@ app.post('/api/users', async (req, res) => {
 
 if (rol === 'ESTUDIANTE') {
   try {
-    const programResponse = await fetch(
-      'http://localhost:3335/api/programs'
+    const programResponse = await internalFetch(
+      PRACTICE_SERVICE_URL + '/api/programs'
     );
 
     if (!programResponse.ok) {
@@ -695,8 +716,8 @@ app.patch('/api/users/:id', async (req, res) => {
 
       // Validar que el programa realmente exista
       // en Practice Service.
-      const programResponse = await fetch(
-        'http://localhost:3335/api/programs'
+      const programResponse = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/programs'
       );
 
       if (!programResponse.ok) {

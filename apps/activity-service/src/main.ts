@@ -9,6 +9,28 @@ import {
   detectEvidenceType,
   sanitizeFileName,
 } from './storage/file-type';
+import {
+  createInternalFetch,
+  readInternalToken,
+  requireInternalToken,
+  resolveServiceUrl,
+} from '@gestion-practicas/service-http';
+
+// ======================================================
+// COMUNICACIÓN ENTRE SERVICIOS
+// ======================================================
+
+const INTERNAL_API_TOKEN = readInternalToken();
+const internalFetch = createInternalFetch(INTERNAL_API_TOKEN);
+
+const USER_SERVICE_URL = resolveServiceUrl(
+  'USER_SERVICE_URL',
+  'http://localhost:3334'
+);
+const PRACTICE_SERVICE_URL = resolveServiceUrl(
+  'PRACTICE_SERVICE_URL',
+  'http://localhost:3335'
+);
 
 const app = express();
 
@@ -16,7 +38,7 @@ app.use(express.json());
 
 
 // ======================================================
-// HEALTH - ACTIVITY SERVICE
+// HEALTH - ACTIVITY SERVICE (público: solo indica que responde)
 // ======================================================
 
 app.get('/api', (_req, res) => {
@@ -25,6 +47,9 @@ app.get('/api', (_req, res) => {
     status: 'ok',
   });
 });
+
+// El resto de rutas solo atiende al Gateway y a otros servicios.
+app.use('/api', requireInternalToken(INTERNAL_API_TOKEN));
 
 
 // ======================================================
@@ -85,8 +110,8 @@ interface TeacherGroup {
 async function getTeacherGroups(
   idDocente: number
 ): Promise<TeacherGroup[]> {
-  const response = await fetch(
-    'http://localhost:3335/api/internal/groups/by-teacher/' +
+  const response = await internalFetch(
+    PRACTICE_SERVICE_URL + '/api/internal/groups/by-teacher/' +
       idDocente
   );
 
@@ -111,8 +136,8 @@ async function getTeacherGroups(
 async function getGroupStudentIds(
   idGrupo: number
 ): Promise<number[]> {
-  const response = await fetch(
-    'http://localhost:3335/api/internal/groups/' +
+  const response = await internalFetch(
+    PRACTICE_SERVICE_URL + '/api/internal/groups/' +
       idGrupo +
       '/students'
   );
@@ -1587,8 +1612,8 @@ app.get(
       const students = new Map<number, any>();
 
       try {
-        const response = await fetch(
-          'http://localhost:3334/api/internal/students/available'
+        const response = await internalFetch(
+          USER_SERVICE_URL + '/api/internal/students/available'
         );
 
         if (response.ok) {
@@ -2529,8 +2554,8 @@ async function getStudentsByIds(
   }
 
   try {
-    const response = await fetch(
-      'http://localhost:3334/api/internal/students/by-ids?ids=' +
+    const response = await internalFetch(
+      USER_SERVICE_URL + '/api/internal/students/by-ids?ids=' +
         ids.join(',')
     );
 

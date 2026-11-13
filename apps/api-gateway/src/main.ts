@@ -8,31 +8,44 @@ import express, {
 
 import * as path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import {
+  createCors,
+  createInternalFetch,
+  readAllowedOrigins,
+  readInternalToken,
+  resolveServiceUrl,
+} from '@gestion-practicas/service-http';
+
+// ========================================================
+// MICROSERVICIOS
+// En local usan localhost; en producción, sus URLs públicas.
+// Toda llamada lleva el secreto interno (INTERNAL_API_TOKEN).
+// ========================================================
+
+const USER_SERVICE_URL = resolveServiceUrl(
+  'USER_SERVICE_URL',
+  'http://localhost:3334'
+);
+const PRACTICE_SERVICE_URL = resolveServiceUrl(
+  'PRACTICE_SERVICE_URL',
+  'http://localhost:3335'
+);
+const ACTIVITY_SERVICE_URL = resolveServiceUrl(
+  'ACTIVITY_SERVICE_URL',
+  'http://localhost:3336'
+);
+
+const internalFetch = createInternalFetch(readInternalToken());
 
 const app = express();
 
 // ========================================================
 // CORS
+// Orígenes del frontend en CORS_ALLOWED_ORIGINS (separados
+// por coma); por defecto http://localhost:4200.
 // ========================================================
 
-app.use((_req, res, next) => {
-  res.header(
-    'Access-Control-Allow-Origin',
-    'http://localhost:4200'
-  );
-
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-  );
-
-  res.header(
-    'Access-Control-Allow-Methods',
-    'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-  );
-
-  next();
-});
+app.use(createCors(readAllowedOrigins()));
 
 app.use(express.json());
 
@@ -113,8 +126,8 @@ async function requireCoordinator(
       });
     }
 
-    const response = await fetch(
-      `http://localhost:3334/api/internal/users/by-auth/${authUser.id}`
+    const response = await internalFetch(
+      `${USER_SERVICE_URL}/api/internal/users/by-auth/${authUser.id}`
     );
 
     if (!response.ok) {
@@ -173,8 +186,8 @@ async function requireTeacher(
       });
     }
 
-    const response = await fetch(
-      `http://localhost:3334/api/internal/teachers/by-auth/${authUser.id}`
+    const response = await internalFetch(
+      `${USER_SERVICE_URL}/api/internal/teachers/by-auth/${authUser.id}`
     );
 
     if (!response.ok) {
@@ -255,8 +268,8 @@ async function requireStudent(
       });
     }
 
-    const response = await fetch(
-      `http://localhost:3334/api/internal/students/by-auth/${encodeURIComponent(authUser.id)}`
+    const response = await internalFetch(
+      `${USER_SERVICE_URL}/api/internal/students/by-auth/${encodeURIComponent(authUser.id)}`
     );
 
     if (!response.ok) {
@@ -324,8 +337,8 @@ async function requireTutor(
       });
     }
 
-    const response = await fetch(
-      `http://localhost:3334/api/internal/tutors/by-auth/${encodeURIComponent(authUser.id)}`
+    const response = await internalFetch(
+      `${USER_SERVICE_URL}/api/internal/tutors/by-auth/${encodeURIComponent(authUser.id)}`
     );
 
     if (!response.ok) {
@@ -378,8 +391,8 @@ async function forwardToActivityService(
   errorLabel: string
 ) {
   try {
-    const response = await fetch(
-      'http://localhost:3336' + path,
+    const response = await internalFetch(
+      ACTIVITY_SERVICE_URL + path,
       init
     );
 
@@ -417,8 +430,8 @@ app.get(
     try {
       const user = res.locals.user;
 
-      const response = await fetch(
-        `http://localhost:3334/api/internal/users/by-auth/${user.id}`
+      const response = await internalFetch(
+        `${USER_SERVICE_URL}/api/internal/users/by-auth/${user.id}`
       );
 
       if (!response.ok) {
@@ -483,8 +496,8 @@ app.get(
   requireAuth,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3334/api'
+      const response = await internalFetch(
+        USER_SERVICE_URL + '/api'
       );
 
       const data = await response.json();
@@ -517,8 +530,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3334/api/users'
+      const response = await internalFetch(
+        USER_SERVICE_URL + '/api/users'
       );
 
       if (!response.ok) {
@@ -554,8 +567,8 @@ app.get(
   requireAuth,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api'
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api'
       );
 
       const data = await response.json();
@@ -586,8 +599,8 @@ app.get(
   requireAuth,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3336/api'
+      const response = await internalFetch(
+        ACTIVITY_SERVICE_URL + '/api'
       );
 
       const data = await response.json();
@@ -623,8 +636,8 @@ app.post(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3334/api/users',
+      const response = await internalFetch(
+        USER_SERVICE_URL + '/api/users',
         {
           method: 'POST',
           headers: {
@@ -673,8 +686,8 @@ if (
   });
 }
     try {
-      const response = await fetch(
-        `http://localhost:3334/api/users/${req.params.id}/status`,
+      const response = await internalFetch(
+        `${USER_SERVICE_URL}/api/users/${req.params.id}/status`,
         {
           method: 'PATCH',
           headers: {
@@ -708,8 +721,8 @@ app.get(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        `http://localhost:3334/api/users/${req.params.id}`
+      const response = await internalFetch(
+        `${USER_SERVICE_URL}/api/users/${req.params.id}`
       );
 
       const data = await response.json();
@@ -737,8 +750,8 @@ app.patch(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        `http://localhost:3334/api/users/${req.params.id}`,
+      const response = await internalFetch(
+        `${USER_SERVICE_URL}/api/users/${req.params.id}`,
         {
           method: 'PATCH',
           headers: {
@@ -772,8 +785,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/programs'
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/programs'
       );
 
       const data = await response.json();
@@ -801,8 +814,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/programs'
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/programs'
       );
 
       const data = await response.json();
@@ -825,8 +838,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/institutions'
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/institutions'
       );
 
       const data = await response.json();
@@ -849,8 +862,8 @@ app.post(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/institutions',
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/institutions',
         {
           method: 'POST',
           headers: {
@@ -882,8 +895,8 @@ async function forwardToPracticeService(
   errorLabel: string
 ) {
   try {
-    const response = await fetch(
-      'http://localhost:3335' + path,
+    const response = await internalFetch(
+      PRACTICE_SERVICE_URL + path,
       init
     );
 
@@ -983,8 +996,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        `http://localhost:3335/api/practices`
+      const response = await internalFetch(
+        `${PRACTICE_SERVICE_URL}/api/practices`
       );
 
       const data = await response.json();
@@ -1007,8 +1020,8 @@ app.post(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/practices',
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/practices',
         {
           method: 'POST',
           headers: {
@@ -1038,8 +1051,8 @@ app.get(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-  'http://localhost:3335/api/practices/' + req.params.id
+      const response = await internalFetch(
+  PRACTICE_SERVICE_URL + '/api/practices/' + req.params.id
 );
 
       const data = await response.json();
@@ -1062,8 +1075,8 @@ app.patch(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        `http://localhost:3335/api/practices/${req.params.id}`,
+      const response = await internalFetch(
+        `${PRACTICE_SERVICE_URL}/api/practices/${req.params.id}`,
         {
           method: 'PATCH',
           headers: {
@@ -1093,8 +1106,8 @@ app.patch(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        `http://localhost:3335/api/practices/${req.params.id}/status`,
+      const response = await internalFetch(
+        `${PRACTICE_SERVICE_URL}/api/practices/${req.params.id}/status`,
         {
           method: 'PATCH',
           headers: {
@@ -1130,8 +1143,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3334/api/internal/students/available'
+      const response = await internalFetch(
+        USER_SERVICE_URL + '/api/internal/students/available'
       );
 
       const data = await response.json();
@@ -1160,8 +1173,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3334/api/internal/tutors/available'
+      const response = await internalFetch(
+        USER_SERVICE_URL + '/api/internal/tutors/available'
       );
 
       const data = await response.json();
@@ -1207,13 +1220,13 @@ async function withAssignmentPeople(assignments: any[]) {
   const [students, tutors] = await Promise.all([
     studentIds.length
       ? fetchInternalData<any[]>(
-          'http://localhost:3334/api/internal/students/by-ids?ids=' +
+          USER_SERVICE_URL + '/api/internal/students/by-ids?ids=' +
             studentIds.join(',')
         )
       : Promise.resolve([]),
     tutorIds.length
       ? fetchInternalData<any[]>(
-          'http://localhost:3334/api/internal/tutors/by-ids?ids=' +
+          USER_SERVICE_URL + '/api/internal/tutors/by-ids?ids=' +
             tutorIds.join(',')
         )
       : Promise.resolve([]),
@@ -1265,8 +1278,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/practice-assignments'
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/practice-assignments'
       );
 
       const body: any = await response.json();
@@ -1299,8 +1312,8 @@ app.get(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/practice-assignments/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/practice-assignments/' +
           encodeURIComponent(String(req.params.id))
       );
 
@@ -1334,8 +1347,8 @@ app.post(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/practice-assignments',
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/practice-assignments',
         {
           method: 'POST',
           headers: {
@@ -1374,8 +1387,8 @@ app.patch(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/practice-assignments/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/practice-assignments/' +
           req.params.id +
           '/status',
         {
@@ -1421,8 +1434,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3334/api/internal/teachers/available'
+      const response = await internalFetch(
+        USER_SERVICE_URL + '/api/internal/teachers/available'
       );
 
       const data = await response.json();
@@ -1448,8 +1461,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3334/api/internal/students/available'
+      const response = await internalFetch(
+        USER_SERVICE_URL + '/api/internal/students/available'
       );
 
       const data = await response.json();
@@ -1475,8 +1488,8 @@ app.get(
   requireCoordinator,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/groups'
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/groups'
       );
 
       const data = await response.json();
@@ -1499,8 +1512,8 @@ app.post(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/groups',
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/groups',
         {
           method: 'POST',
           headers: {
@@ -1530,8 +1543,8 @@ app.get(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/groups/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/groups/' +
           req.params.id
       );
 
@@ -1555,8 +1568,8 @@ app.patch(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/groups/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/groups/' +
           req.params.id,
         {
           method: 'PATCH',
@@ -1587,8 +1600,8 @@ app.patch(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/groups/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/groups/' +
           req.params.id +
           '/students',
         {
@@ -1623,8 +1636,8 @@ app.patch(
   requireCoordinator,
   async (req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/groups/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/groups/' +
           req.params.id +
           '/status',
         {
@@ -1661,8 +1674,8 @@ app.get(
     try {
       const teacher = res.locals.teacher;
 
-      const response = await fetch(
-        'http://localhost:3335/api/internal/groups/by-teacher/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/internal/groups/by-teacher/' +
           teacher.id_docente
       );
 
@@ -1711,8 +1724,8 @@ app.get(
 
       // Verificar que el grupo pertenezca
       // realmente al docente autenticado.
-      const groupsResponse = await fetch(
-        'http://localhost:3335/api/internal/groups/by-teacher/' +
+      const groupsResponse = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/internal/groups/by-teacher/' +
           teacher.id_docente
       );
 
@@ -1744,8 +1757,8 @@ app.get(
         });
       }
 
-      const response = await fetch(
-        'http://localhost:3335/api/groups/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/groups/' +
           idGrupo
       );
 
@@ -1792,8 +1805,8 @@ app.get(
           encodeURIComponent(groupId)
         : '';
 
-      const response = await fetch(
-        'http://localhost:3336/api/activities/teacher/' +
+      const response = await internalFetch(
+        ACTIVITY_SERVICE_URL + '/api/activities/teacher/' +
           teacher.id_docente +
           query
       );
@@ -1830,8 +1843,8 @@ app.post(
     try {
       const teacher = res.locals.teacher;
 
-      const response = await fetch(
-        'http://localhost:3336/api/activities',
+      const response = await internalFetch(
+        ACTIVITY_SERVICE_URL + '/api/activities',
         {
           method: 'POST',
 
@@ -1882,8 +1895,8 @@ app.get(
     try {
       const teacher = res.locals.teacher;
 
-      const response = await fetch(
-        'http://localhost:3336/api/activities/' +
+      const response = await internalFetch(
+        ACTIVITY_SERVICE_URL + '/api/activities/' +
           encodeURIComponent(
             String(req.params.id)
           ) +
@@ -1923,8 +1936,8 @@ app.patch(
     try {
       const teacher = res.locals.teacher;
 
-      const response = await fetch(
-        'http://localhost:3336/api/activities/' +
+      const response = await internalFetch(
+        ACTIVITY_SERVICE_URL + '/api/activities/' +
           encodeURIComponent(
           String(req.params.id)
           ),
@@ -1979,8 +1992,8 @@ app.patch(
     try {
       const teacher = res.locals.teacher;
 
-      const response = await fetch(
-        'http://localhost:3336/api/activities/' +
+      const response = await internalFetch(
+        ACTIVITY_SERVICE_URL + '/api/activities/' +
           encodeURIComponent(
             String(req.params.id)
           ) +
@@ -2142,8 +2155,8 @@ app.get(
   requireTutor,
   async (_req, res) => {
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/internal/tutors/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/internal/tutors/' +
           res.locals.tutor.id_tutor +
           '/assignments'
       );
@@ -2172,8 +2185,8 @@ app.get(
     let assignment: any;
 
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/internal/tutors/' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/internal/tutors/' +
           res.locals.tutor.id_tutor +
           '/assignments/' +
           encodeURIComponent(String(req.params.id))
@@ -2206,8 +2219,8 @@ app.get(
     }
 
     try {
-      const response = await fetch(
-        'http://localhost:3336/api/internal/follow-up/groups/' +
+      const response = await internalFetch(
+        ACTIVITY_SERVICE_URL + '/api/internal/follow-up/groups/' +
           assignment.id_grupo +
           '/students/' +
           assignment.id_estudiante
@@ -2387,7 +2400,7 @@ app.get(
 // GET a un servicio interno; devuelve body.data o null.
 async function fetchInternalData<T>(url: string): Promise<T | null> {
   try {
-    const response = await fetch(url);
+    const response = await internalFetch(url);
 
     if (!response.ok) {
       return null;
@@ -2422,8 +2435,8 @@ app.get(
     let report: any;
 
     try {
-      const response = await fetch(
-        'http://localhost:3335/api/internal/reports/period' +
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/internal/reports/period' +
           (periodo
             ? '?periodo=' + encodeURIComponent(periodo)
             : '')
@@ -2476,22 +2489,22 @@ app.get(
       await Promise.all([
         groupIds.length
           ? fetchInternalData<any[]>(
-              'http://localhost:3336/api/internal/reports/groups-progress?ids=' +
+              ACTIVITY_SERVICE_URL + '/api/internal/reports/groups-progress?ids=' +
                 groupIds.join(',')
             )
           : Promise.resolve([]),
         studentIds.length
           ? fetchInternalData<any[]>(
-              'http://localhost:3334/api/internal/students/by-ids?ids=' +
+              USER_SERVICE_URL + '/api/internal/students/by-ids?ids=' +
                 studentIds.join(',')
             )
           : Promise.resolve([]),
         fetchInternalData<any[]>(
-          'http://localhost:3334/api/internal/teachers/available'
+          USER_SERVICE_URL + '/api/internal/teachers/available'
         ),
         tutorIds.length
           ? fetchInternalData<any[]>(
-              'http://localhost:3334/api/internal/tutors/by-ids?ids=' +
+              USER_SERVICE_URL + '/api/internal/tutors/by-ids?ids=' +
                 tutorIds.join(',')
             )
           : Promise.resolve([]),

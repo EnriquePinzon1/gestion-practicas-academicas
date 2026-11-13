@@ -1,11 +1,12 @@
 import { Injectable } from '@angular/core';
 import { supabase } from '../supabase.client';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root',
 })
 export class ApiService {
-  private readonly gatewayUrl = 'http://localhost:3333/api';
+  private readonly gatewayUrl = environment.apiUrl;
 
   private async getToken(): Promise<string> {
     const {
