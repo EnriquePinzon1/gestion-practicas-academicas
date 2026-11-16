@@ -60,7 +60,6 @@ import { TutorAssignments } from
 import { TutorAssignmentDetail } from
   './pages/tutor/tutor-assignment-detail';
 
-import { Reports } from './pages/reports/reports';
 import { PracticeHours } from
   './pages/practice-hours/practice-hours';
 import { PracticeHoursDetail } from
@@ -194,7 +193,10 @@ export const appRoutes: Route[] = [
 
   {
     path: 'reportes',
-    component: Reports,
+    // Carga diferida: la página y la exportación PDF no
+    // pesan en el bundle inicial.
+    loadComponent: () =>
+      import('./pages/reports/reports').then((m) => m.Reports),
     canActivate: [authGuard],
   },
   // ==========================================

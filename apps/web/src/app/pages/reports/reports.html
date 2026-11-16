@@ -2,488 +2,299 @@
   <div class="page-header">
     <div>
       <span class="eyebrow">Reportes</span>
-
-      <h1>Reporte del período académico</h1>
-
+      <h1>Generación de reportes</h1>
       <p>
-        Estado de las asignaciones, avance académico de los grupos y
-        pendientes que requieren gestión antes de cerrar el período.
+        Seleccione el tipo de reporte, aplique los filtros que necesite,
+        revise la vista previa y expórtela en PDF.
       </p>
     </div>
-
-    @if (reporte(); as r) {
-      <div class="field period-field">
-        <label for="periodo">Período académico</label>
-
-        <select
-          id="periodo"
-          [ngModel]="r.periodo"
-          (ngModelChange)="changePeriod($event)"
-          [disabled]="loading()"
-        >
-          @if (!r.periodos.includes(r.periodo)) {
-            <option [value]="r.periodo">{{ r.periodo }}</option>
-          }
-
-          @for (periodo of r.periodos; track periodo) {
-            <option [value]="periodo">{{ periodo }}</option>
-          }
-        </select>
-      </div>
-    }
   </div>
+
+  <!-- ================= TIPO DE REPORTE ================= -->
+
+  <section class="panel">
+    <div class="panel-heading">
+      <h2>Tipo de reporte</h2>
+    </div>
+
+    <div class="type-grid" role="radiogroup" aria-label="Tipo de reporte">
+      @for (r of reportes; track r.tipo) {
+        <button
+          type="button"
+          class="type-card"
+          role="radio"
+          [attr.aria-checked]="tipo() === r.tipo"
+          [class.selected]="tipo() === r.tipo"
+          [disabled]="generating()"
+          (click)="selectType(r.tipo)"
+        >
+          <strong>{{ r.nombre }}</strong>
+          <span>{{ r.descripcion }}</span>
+        </button>
+      }
+    </div>
+  </section>
+
+  <!-- ================= FILTROS ================= -->
+
+  @if (definicion(); as def) {
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Filtros</h2>
+        <p>
+          Todos son opcionales: sin filtros se genera el reporte general.
+          @if (def.rango) {
+            El rango de fechas se aplica a la {{ def.rango }}.
+          }
+        </p>
+      </div>
+
+      @if (loadingOptions()) {
+        <p class="panel-body ui-loader">Cargando opciones...</p>
+      } @else {
+        <form class="filters-grid" (ngSubmit)="generate()">
+          @if (aplica('programa')) {
+            <div class="field">
+              <label for="f-programa">Programa</label>
+              <select id="f-programa" name="programa"
+                [ngModel]="filtros().programa ?? ''"
+                (ngModelChange)="setFilter('programa', $event)">
+                <option value="">Todos</option>
+                @for (p of opciones()?.programas ?? []; track p.id_programa) {
+                  <option [value]="p.id_programa">{{ p.nombre }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          @if (aplica('practica')) {
+            <div class="field">
+              <label for="f-practica">Práctica</label>
+              <select id="f-practica" name="practica"
+                [ngModel]="filtros().practica ?? ''"
+                (ngModelChange)="setFilter('practica', $event)">
+                <option value="">Todas</option>
+                @for (p of practicas(); track p.id_practica) {
+                  <option [value]="p.id_practica">{{ p.nombre }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          @if (aplica('periodo')) {
+            <div class="field">
+              <label for="f-periodo">Período académico</label>
+              <select id="f-periodo" name="periodo"
+                [ngModel]="filtros().periodo ?? ''"
+                (ngModelChange)="setFilter('periodo', $event)">
+                <option value="">
+                  {{ tipo() === 'consolidado' ? 'Vigente' : 'Todos' }}
+                </option>
+                @for (p of opciones()?.periodos ?? []; track p) {
+                  <option [value]="p">{{ p }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          @if (aplica('estado')) {
+            <div class="field">
+              <label for="f-estado">Estado</label>
+              <select id="f-estado" name="estado"
+                [ngModel]="filtros().estado ?? ''"
+                (ngModelChange)="setFilter('estado', $event)">
+                <option value="">Todos</option>
+                @for (e of opciones()?.estados ?? []; track e) {
+                  <option [value]="e">{{ formatear(e, 'estado') }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          @if (aplica('docente')) {
+            <div class="field">
+              <label for="f-docente">Docente asesor</label>
+              <select id="f-docente" name="docente"
+                [ngModel]="filtros().docente ?? ''"
+                (ngModelChange)="setFilter('docente', $event)">
+                <option value="">Todos</option>
+                @for (d of opciones()?.docentes ?? []; track d.id_docente) {
+                  <option [value]="d.id_docente">{{ d.nombre }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          @if (aplica('grupo')) {
+            <div class="field">
+              <label for="f-grupo">Grupo</label>
+              <select id="f-grupo" name="grupo"
+                [ngModel]="filtros().grupo ?? ''"
+                (ngModelChange)="setFilter('grupo', $event)">
+                <option value="">Todos</option>
+                @for (g of grupos(); track g.id_grupo) {
+                  <option [value]="g.id_grupo">
+                    {{ g.nombre }} · {{ g.periodo_academico }}
+                  </option>
+                }
+              </select>
+            </div>
+          }
+
+          @if (aplica('estudiante')) {
+            <div class="field">
+              <label for="f-estudiante">Estudiante</label>
+              <select id="f-estudiante" name="estudiante"
+                [ngModel]="filtros().estudiante ?? ''"
+                (ngModelChange)="setFilter('estudiante', $event)">
+                <option value="">Todos</option>
+                @for (e of estudiantes(); track e.id_estudiante) {
+                  <option [value]="e.id_estudiante">
+                    {{ e.estudiante }} ({{ e.codigo }})
+                  </option>
+                }
+              </select>
+            </div>
+          }
+
+          @if (aplica('desde')) {
+            <div class="field">
+              <label for="f-desde">Fecha inicial</label>
+              <input id="f-desde" name="desde" type="date"
+                [class.invalid]="invalidRange()"
+                [ngModel]="filtros().desde ?? ''"
+                (ngModelChange)="setFilter('desde', $event)" />
+            </div>
+
+            <div class="field">
+              <label for="f-hasta">Fecha final</label>
+              <input id="f-hasta" name="hasta" type="date"
+                [class.invalid]="invalidRange()"
+                [ngModel]="filtros().hasta ?? ''"
+                (ngModelChange)="setFilter('hasta', $event)" />
+            </div>
+          }
+
+          <div class="filter-actions">
+            <button type="button" class="secondary-button"
+              [disabled]="generating()"
+              (click)="clearFilters()">
+              Limpiar filtros
+            </button>
+
+            <button type="submit" class="primary-button"
+              [class.ui-loading]="generating()"
+              [disabled]="generating()">
+              {{ generating() ? 'Generando...' : 'Generar reporte' }}
+            </button>
+          </div>
+        </form>
+      }
+    </section>
+  } @else {
+    <p class="hint">Seleccione un tipo de reporte para ver sus filtros.</p>
+  }
 
   @if (errorMessage()) {
     <div class="alert error">{{ errorMessage() }}</div>
   }
 
-  @if (loading()) {
-    <p class="ui-loader">Cargando reporte del período...</p>
-  } @else if (reporte(); as r) {
+  @if (infoMessage()) {
+    <div class="empty-state panel">
+      <h3>Sin resultados</h3>
+      <p>{{ infoMessage() }}</p>
+    </div>
+  }
 
-    @for (aviso of r.avisos; track aviso) {
-      <div class="alert warning">{{ aviso }}</div>
-    }
+  @if (generating()) {
+    <p class="ui-loader">Generando reporte...</p>
+  }
 
-    <!-- ================= RESUMEN ================= -->
+  <!-- ================= VISTA PREVIA ================= -->
 
-    <section class="summary-grid">
-      <div class="summary-card">
-        <span>Asignaciones</span>
-        <strong>{{ r.resumen.total_asignaciones }}</strong>
-        <small>
-          {{ r.resumen.estudiantes_asignados }}
-          {{ r.resumen.estudiantes_asignados === 1 ? 'estudiante' : 'estudiantes' }}
-          con asignación vigente o finalizada
-        </small>
-      </div>
+  @if (reporte(); as r) {
+    <section class="preview">
+      <header class="preview-header">
+        <div>
+          <span class="eyebrow">Vista previa</span>
+          <h2>{{ r.titulo }}</h2>
 
-      <div class="summary-card">
-        <span>Grupos de seguimiento</span>
-        <strong>{{ r.resumen.total_grupos }}</strong>
-        <small>
-          {{ r.resumen.estudiantes_en_grupos }}
-          {{ r.resumen.estudiantes_en_grupos === 1 ? 'estudiante' : 'estudiantes' }}
-          en grupos
-        </small>
-      </div>
+          <ul class="criteria">
+            @for (c of criterios(); track c.etiqueta) {
+              <li><span>{{ c.etiqueta }}:</span> {{ c.valor }}</li>
+            } @empty {
+              <li>Reporte general (sin filtros)</li>
+            }
+          </ul>
 
-      <div class="summary-card">
-        <span>Evaluación del tutor</span>
-        <strong>
-          {{ r.evaluaciones_tutor.promedio ?? '—' }}
-        </strong>
-        <small>
-          Promedio de {{ r.evaluaciones_tutor.registradas }}
-          {{ r.evaluaciones_tutor.registradas === 1 ? 'evaluación' : 'evaluaciones' }}
-        </small>
-      </div>
-
-      <div class="summary-card" [class.alert-card]="totalAlertas() > 0">
-        <span>Alertas por gestionar</span>
-        <strong>{{ totalAlertas() }}</strong>
-        <small>Cruces grupo/asignación y evaluaciones pendientes</small>
-      </div>
-    </section>
-
-    <section class="state-strip">
-      @for (estado of estados; track estado) {
-        <div class="state-count">
-          <span class="status" [ngClass]="'status-' + estado.toLowerCase()">
-            {{ etiquetas[estado] }}
-          </span>
-          <strong>{{ r.resumen.por_estado[estado] }}</strong>
+          <small>Generado el {{ fechaGeneracion(r.generado_en) }}</small>
         </div>
+
+        <button type="button" class="primary-button"
+          [class.ui-loading]="exporting()"
+          [disabled]="exporting()"
+          (click)="exportPdf()">
+          {{ exporting() ? 'Exportando...' : 'Exportar PDF' }}
+        </button>
+      </header>
+
+      @if (exportError()) {
+        <div class="alert error">{{ exportError() }}</div>
+      }
+
+      @for (aviso of avisos(); track aviso) {
+        <div class="alert warning">{{ aviso }}</div>
+      }
+
+      <div class="summary-grid">
+        @for (i of r.resumen; track i.etiqueta) {
+          <article class="summary-card">
+            <span>{{ i.etiqueta }}</span>
+            <strong>{{ formatear(i.valor, i.formato) }}</strong>
+          </article>
+        }
+      </div>
+
+      @for (s of r.secciones; track $index) {
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>
+              {{ s.titulo }}
+              <span class="count">{{ s.filas.length }}</span>
+            </h2>
+            @if (s.descripcion) {
+              <p>{{ s.descripcion }}</p>
+            }
+          </div>
+
+          @if (s.filas.length === 0) {
+            <p class="ok-state">Sin registros.</p>
+          } @else {
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    @for (c of s.columnas; track c.clave) {
+                      <th [class.num]="numerica(c.formato)">{{ c.etiqueta }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (fila of s.filas; track $index) {
+                    <tr>
+                      @for (c of s.columnas; track c.clave) {
+                        <td [class.num]="numerica(c.formato)">
+                          {{ formatear(fila[c.clave], c.formato) }}
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
       }
     </section>
-
-    @if (
-      r.resumen.total_asignaciones === 0 &&
-      r.resumen.total_grupos === 0
-    ) {
-      <div class="panel">
-        <div class="empty-state">
-          <h3>Sin información para {{ r.periodo }}</h3>
-          <p>No hay asignaciones ni grupos registrados en este período.</p>
-        </div>
-      </div>
-    } @else {
-
-      <!-- ============ ASIGNACIONES ============ -->
-
-      <div class="two-columns">
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Asignaciones por institución</h2>
-            <p>Dónde realizan la práctica los estudiantes del período.</p>
-          </div>
-
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Institución</th>
-                  @for (estado of estados; track estado) {
-                    <th class="num">{{ etiquetas[estado] }}</th>
-                  }
-                  <th class="num">Total</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                @for (fila of r.por_institucion; track fila.id_institucion) {
-                  <tr>
-                    <td class="strong">{{ fila.institucion }}</td>
-                    @for (estado of estados; track estado) {
-                      <td class="num" [class.muted]="!fila.estados[estado]">
-                        {{ fila.estados[estado] }}
-                      </td>
-                    }
-                    <td class="num strong">{{ fila.total }}</td>
-                  </tr>
-                } @empty {
-                  <tr>
-                    <td colspan="6" class="muted">Sin asignaciones en el período.</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Asignaciones por práctica</h2>
-            <p>Cobertura de cada práctica curricular y sus grupos.</p>
-          </div>
-
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Práctica</th>
-                  <th class="num">Vigentes</th>
-                  <th class="num">Finalizadas</th>
-                  <th class="num">Total</th>
-                  <th class="num">Grupos</th>
-                  <th class="num">En grupos</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                @for (fila of r.por_practica; track fila.id_practica) {
-                  <tr>
-                    <td class="strong">{{ fila.practica }}</td>
-                    <td class="num">{{ fila.estados.ASIGNADA + fila.estados.EN_CURSO }}</td>
-                    <td class="num">{{ fila.estados.FINALIZADA }}</td>
-                    <td class="num strong">{{ fila.total }}</td>
-                    <td class="num" [class.warn]="fila.grupos === 0">{{ fila.grupos }}</td>
-                    <td class="num">{{ fila.estudiantes_en_grupos }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-
-      <!-- ============ AVANCE ACADÉMICO ============ -->
-
-      <section class="panel">
-        <div class="panel-heading">
-          <h2>Avance académico por grupo</h2>
-          <p>
-            Entregas sobre las esperadas según el registro de actividades de
-            cada estudiante. El promedio considera solo actividades calificadas.
-          </p>
-        </div>
-
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Grupo</th>
-                <th>Docente asesor</th>
-                <th class="num">Actividades</th>
-                <th>Entregas</th>
-                <th class="num">Sin entregar</th>
-                <th class="num">Calificadas</th>
-                <th class="num">Promedio</th>
-                <th></th>
-              </tr>
-            </thead>
-
-            <tbody>
-              @for (grupo of r.grupos; track grupo.id_grupo) {
-                <tr>
-                  <td>
-                    <div class="stacked">
-                      <strong>{{ grupo.nombre }}</strong>
-                      <span>
-                        {{ grupo.practica }} ·
-                        {{ grupo.estado === 'ACTIVO' ? 'Activo' : 'Cerrado' }} ·
-                        {{ grupo.total_estudiantes }}
-                        {{ grupo.total_estudiantes === 1 ? 'estudiante' : 'estudiantes' }}
-                      </span>
-                    </div>
-                  </td>
-
-                  <td [class.muted]="!grupo.docente">
-                    {{ grupo.docente ?? 'Docente #' + grupo.id_docente }}
-                  </td>
-
-                  @if (grupo.avance; as avance) {
-                    <td class="num">
-                      {{ avance.actividades }}
-                      @if (avance.actividades_abiertas) {
-                        <span class="hint">({{ avance.actividades_abiertas }} abiertas)</span>
-                      }
-                    </td>
-
-                    <td>
-                      @if (avance.esperadas) {
-                        <div class="progress-cell">
-                          <div class="progress">
-                            <div class="progress-bar" [style.width.%]="porcentaje(avance)"></div>
-                          </div>
-                          <span class="nowrap">
-                            {{ avance.entregadas }}/{{ avance.esperadas }}
-                            ({{ porcentaje(avance) }}%)
-                          </span>
-                        </div>
-                      } @else {
-                        <span class="muted">Sin actividades</span>
-                      }
-                    </td>
-
-                    <td class="num" [class.warn]="avance.no_entregadas > 0">
-                      {{ avance.no_entregadas }}
-                    </td>
-
-                    <td class="num">{{ avance.calificadas }}</td>
-
-                    <td class="num strong">{{ avance.promedio ?? '—' }}</td>
-                  } @else {
-                    <td colspan="5" class="muted">Avance no disponible</td>
-                  }
-
-                  <td>
-                    <button class="secondary-button" (click)="viewGroup(grupo.id_grupo)">
-                      Ver
-                    </button>
-                  </td>
-                </tr>
-              } @empty {
-                <tr>
-                  <td colspan="8" class="muted">No hay grupos de seguimiento en el período.</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- ============ CRUCES ============ -->
-
-      <div class="two-columns">
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>
-              En grupo sin asignación
-              <span class="count" [class.zero]="!r.cruces.en_grupo_sin_asignacion.length">
-                {{ r.cruces.en_grupo_sin_asignacion.length }}
-              </span>
-            </h2>
-            <p>
-              Tienen seguimiento académico pero no institución definida para
-              esa práctica en el período.
-            </p>
-          </div>
-
-          @if (r.cruces.en_grupo_sin_asignacion.length) {
-            <div class="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Estudiante</th>
-                    <th>Grupo · Práctica</th>
-                    <th></th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  @for (fila of r.cruces.en_grupo_sin_asignacion; track fila.id_grupo + '-' + fila.id_estudiante) {
-                    <tr>
-                      <td>
-                        <div class="stacked">
-                          <strong>{{ nombre(fila) }}</strong>
-                          <span>{{ fila.codigo_estudiante ?? '—' }}</span>
-                        </div>
-                      </td>
-                      <td>{{ fila.grupo }} · {{ fila.practica }}</td>
-                      <td>
-                        <button class="secondary-button" (click)="newAssignment()">
-                          Asignar
-                        </button>
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-          } @else {
-            <p class="ok-state">Todos los estudiantes en grupos tienen asignación.</p>
-          }
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>
-              Asignación sin grupo
-              <span class="count" [class.zero]="!r.cruces.asignacion_sin_grupo.length">
-                {{ r.cruces.asignacion_sin_grupo.length }}
-              </span>
-            </h2>
-            <p>
-              Tienen institución asignada pero ningún grupo de la misma
-              práctica y período: no reciben actividades ni docente asesor.
-            </p>
-          </div>
-
-          @if (r.cruces.asignacion_sin_grupo.length) {
-            <div class="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Estudiante</th>
-                    <th>Práctica · Institución</th>
-                    <th>Estado</th>
-                    <th></th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  @for (fila of r.cruces.asignacion_sin_grupo; track fila.id_asignacion) {
-                    <tr>
-                      <td>
-                        <div class="stacked">
-                          <strong>{{ nombre(fila) }}</strong>
-                          <span>{{ fila.codigo_estudiante ?? '—' }}</span>
-                        </div>
-                      </td>
-                      <td>{{ fila.practica }} · {{ fila.institucion }}</td>
-                      <td>
-                        <span class="status" [ngClass]="'status-' + fila.estado.toLowerCase()">
-                          {{ etiquetas[fila.estado] }}
-                        </span>
-                      </td>
-                      <td>
-                        <button class="secondary-button" (click)="viewAssignment(fila.id_asignacion)">
-                          Ver
-                        </button>
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-          } @else {
-            <p class="ok-state">Todas las asignaciones tienen grupo de seguimiento.</p>
-          }
-        </section>
-      </div>
-
-      <!-- ============ EVALUACIÓN DEL TUTOR ============ -->
-
-      <section class="panel">
-        <div class="panel-heading">
-          <h2>
-            Evaluación final del tutor receptor
-            <span class="count" [class.zero]="!r.evaluaciones_tutor.pendientes.length">
-              {{ r.evaluaciones_tutor.pendientes.length }}
-            </span>
-          </h2>
-          <p>
-            Registradas: {{ r.evaluaciones_tutor.registradas }} ·
-            recomiendan aprobación: {{ r.evaluaciones_tutor.recomiendan_aprobacion }}.
-            Una práctica con tutor no puede finalizarse sin su evaluación.
-          </p>
-        </div>
-
-        <h3 class="sub-heading">Pendientes (prácticas en curso con tutor)</h3>
-
-        @if (r.evaluaciones_tutor.pendientes.length) {
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Estudiante</th>
-                  <th>Práctica · Institución</th>
-                  <th>Tutor receptor</th>
-                  <th>Inicio</th>
-                  <th></th>
-                </tr>
-              </thead>
-
-              <tbody>
-                @for (fila of r.evaluaciones_tutor.pendientes; track fila.id_asignacion) {
-                  <tr>
-                    <td class="strong">{{ nombre(fila) }}</td>
-                    <td>{{ fila.practica }} · {{ fila.institucion }}</td>
-                    <td>{{ fila.tutor ?? 'Tutor #' + fila.id_tutor }}</td>
-                    <td class="nowrap">{{ formatearFecha(fila.fecha_inicio) }}</td>
-                    <td>
-                      <button class="secondary-button" (click)="viewAssignment(fila.id_asignacion)">
-                        Ver
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        } @else {
-          <p class="ok-state">No hay evaluaciones del tutor pendientes.</p>
-        }
-
-        <h3 class="sub-heading">Vigentes sin tutor receptor</h3>
-
-        @if (r.evaluaciones_tutor.sin_tutor.length) {
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Estudiante</th>
-                  <th>Práctica · Institución</th>
-                  <th>Estado</th>
-                  <th></th>
-                </tr>
-              </thead>
-
-              <tbody>
-                @for (fila of r.evaluaciones_tutor.sin_tutor; track fila.id_asignacion) {
-                  <tr>
-                    <td class="strong">{{ nombre(fila) }}</td>
-                    <td>{{ fila.practica }} · {{ fila.institucion }}</td>
-                    <td>
-                      <span class="status" [ngClass]="'status-' + fila.estado.toLowerCase()">
-                        {{ etiquetas[fila.estado] }}
-                      </span>
-                    </td>
-                    <td>
-                      <button class="secondary-button" (click)="viewAssignment(fila.id_asignacion)">
-                        Ver
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        } @else {
-          <p class="ok-state">Todas las asignaciones vigentes tienen tutor.</p>
-        }
-      </section>
-    }
   }
 </div>

@@ -4747,6 +4747,334 @@ app.get('/api/practice-assignments/:id/visits', async (req, res) => {
   }
 });
 
+// ========================================================
+// REPORTES DEL COORDINADOR (CU "Generar Reportes")
+//
+// Datos internos (solo IDs de personas) para los reportes
+// que arma el Gateway. Los filtros llegan ya validados por
+// el Gateway; aquí se vuelven a normalizar por seguridad.
+// ========================================================
+
+const ESTADOS_ASIGNACION = [
+  'ASIGNADA',
+  'EN_CURSO',
+  'FINALIZADA',
+  'CANCELADA',
+];
+
+function reportFilters(query: any) {
+  const text = (value: unknown) =>
+    typeof value === 'string' ? value.trim() : '';
+
+  const periodo = text(query.periodo);
+  const estado = text(query.estado);
+  const isoDate = (value: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(value + 'T00:00:00Z'))
+      ? value
+      : null;
+
+  return {
+    programa: parsePositiveId(query.programa),
+    practica: parsePositiveId(query.practica),
+    estudiante: parsePositiveId(query.estudiante),
+    docente: parsePositiveId(query.docente),
+    grupo: parsePositiveId(query.grupo),
+    periodo: /^\d{4}-[12]$/.test(periodo) ? periodo : null,
+    estado: ESTADOS_ASIGNACION.includes(estado) ? estado : null,
+    desde: isoDate(text(query.desde)),
+    hasta: isoDate(text(query.hasta)),
+  };
+}
+
+// Opciones de los filtros: catálogos y relaciones para
+// encadenar Programa → Práctica → Grupo → Estudiante.
+app.get('/api/internal/reports/options', async (_req, res) => {
+  try {
+    const [programas, practicas, periodos, grupos, estudiantes] =
+      await Promise.all([
+        pool.query(`
+          SELECT id_programa, nombre
+          FROM practices.programa
+          ORDER BY nombre
+        `),
+        pool.query(`
+          SELECT id_practica, nombre, id_programa
+          FROM practices.practica
+          ORDER BY nombre
+        `),
+        pool.query(`
+          SELECT periodo_academico
+          FROM practices.asignacion_practica
+          UNION
+          SELECT periodo_academico
+          FROM practices.grupo
+          ORDER BY periodo_academico DESC
+        `),
+        pool.query(`
+          SELECT
+            g.id_grupo,
+            g.nombre,
+            g.id_practica,
+            p.id_programa,
+            g.periodo_academico,
+            g.id_docente,
+            g.estado,
+            COALESCE(
+              array_agg(ge.id_estudiante ORDER BY ge.id_estudiante)
+                FILTER (WHERE ge.id_estudiante IS NOT NULL),
+              '{}'
+            ) AS estudiantes
+          FROM practices.grupo g
+          INNER JOIN practices.practica p
+            ON p.id_practica = g.id_practica
+          LEFT JOIN practices.grupo_estudiante ge
+            ON ge.id_grupo = g.id_grupo
+          GROUP BY g.id_grupo, p.id_programa
+          ORDER BY g.periodo_academico DESC, g.nombre
+        `),
+        // Estudiante con práctica y período (asignaciones y grupos)
+        pool.query(`
+          SELECT DISTINCT
+            x.id_estudiante,
+            x.id_practica,
+            p.id_programa,
+            x.periodo_academico
+          FROM (
+            SELECT id_estudiante, id_practica, periodo_academico
+            FROM practices.asignacion_practica
+            UNION
+            SELECT ge.id_estudiante, g.id_practica, g.periodo_academico
+            FROM practices.grupo_estudiante ge
+            INNER JOIN practices.grupo g
+              ON g.id_grupo = ge.id_grupo
+          ) x
+          INNER JOIN practices.practica p
+            ON p.id_practica = x.id_practica
+        `),
+      ]);
+
+    return res.json({
+      data: {
+        programas: programas.rows,
+        practicas: practicas.rows,
+        periodos: periodos.rows.map((row) => row.periodo_academico),
+        grupos: grupos.rows,
+        estudiantes: estudiantes.rows,
+      },
+    });
+  } catch (error) {
+    console.error('Error consultando opciones de reportes:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las opciones de los reportes',
+    });
+  }
+});
+
+// Reporte 2: asignaciones de práctica (rango = fecha de inicio)
+app.get('/api/internal/reports/assignments', async (req, res) => {
+  const f = reportFilters(req.query);
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          a.id_asignacion,
+          a.id_estudiante,
+          a.id_tutor,
+          a.periodo_academico,
+          a.estado,
+          to_char(a.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+          to_char(a.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
+          p.nombre AS practica,
+          pr.nombre AS programa,
+          i.nombre AS institucion,
+          p.horas_requeridas,
+          COALESCE(h.total, 0)::float AS horas_realizadas,
+          ev.calificacion::float AS evaluacion_tutor,
+          ev.recomienda_aprobacion
+        FROM practices.asignacion_practica a
+        INNER JOIN practices.practica p
+          ON p.id_practica = a.id_practica
+        INNER JOIN practices.programa pr
+          ON pr.id_programa = p.id_programa
+        INNER JOIN practices.institucion i
+          ON i.id_institucion = a.id_institucion
+        LEFT JOIN (
+          SELECT id_asignacion, SUM(horas) AS total
+          FROM practices.registro_horas
+          GROUP BY id_asignacion
+        ) h
+          ON h.id_asignacion = a.id_asignacion
+        LEFT JOIN practices.evaluacion_tutor ev
+          ON ev.id_asignacion = a.id_asignacion
+        WHERE ($1::int IS NULL OR p.id_programa = $1::int)
+          AND ($2::int IS NULL OR a.id_practica = $2::int)
+          AND ($3::varchar IS NULL OR a.periodo_academico = $3::varchar)
+          AND ($4::varchar IS NULL OR a.estado = $4::varchar)
+          AND ($5::date IS NULL OR a.fecha_inicio >= $5::date)
+          AND ($6::date IS NULL OR a.fecha_inicio <= $6::date)
+        ORDER BY
+          a.periodo_academico DESC,
+          p.nombre,
+          a.id_asignacion
+      `,
+      [f.programa, f.practica, f.periodo, f.estado, f.desde, f.hasta]
+    );
+
+    return res.json({ data: result.rows });
+  } catch (error) {
+    console.error('Error consultando reporte de asignaciones:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las asignaciones',
+    });
+  }
+});
+
+// Reporte 3: horas de práctica (rango = fecha del registro).
+// Asignaciones no canceladas; horas del rango y acumuladas.
+app.get('/api/internal/reports/hours', async (req, res) => {
+  const f = reportFilters(req.query);
+
+  try {
+    const assignments = await pool.query(
+      `
+        SELECT
+          a.id_asignacion,
+          a.id_estudiante,
+          a.periodo_academico,
+          a.estado,
+          p.nombre AS practica,
+          i.nombre AS institucion,
+          p.horas_requeridas,
+          COALESCE(SUM(r.horas), 0)::float AS horas_totales,
+          COALESCE(SUM(r.horas) FILTER (
+            WHERE ($6::date IS NULL OR r.fecha >= $6::date)
+              AND ($7::date IS NULL OR r.fecha <= $7::date)
+          ), 0)::float AS horas_rango,
+          COUNT(r.id_registro) FILTER (
+            WHERE ($6::date IS NULL OR r.fecha >= $6::date)
+              AND ($7::date IS NULL OR r.fecha <= $7::date)
+          )::int AS registros_rango
+        FROM practices.asignacion_practica a
+        INNER JOIN practices.practica p
+          ON p.id_practica = a.id_practica
+        INNER JOIN practices.institucion i
+          ON i.id_institucion = a.id_institucion
+        LEFT JOIN practices.registro_horas r
+          ON r.id_asignacion = a.id_asignacion
+        WHERE a.estado <> 'CANCELADA'
+          AND ($1::int IS NULL OR p.id_programa = $1::int)
+          AND ($2::int IS NULL OR a.id_practica = $2::int)
+          AND ($3::varchar IS NULL OR a.periodo_academico = $3::varchar)
+          AND ($4::int IS NULL OR a.id_estudiante = $4::int)
+          AND ($5::varchar IS NULL OR a.estado = $5::varchar)
+        GROUP BY a.id_asignacion, p.id_practica, i.id_institucion
+        ORDER BY a.periodo_academico DESC, p.nombre, a.id_asignacion
+      `,
+      [
+        f.programa,
+        f.practica,
+        f.periodo,
+        f.estudiante,
+        f.estado,
+        f.desde,
+        f.hasta,
+      ]
+    );
+
+    const ids = assignments.rows.map((row) => row.id_asignacion);
+
+    const records = ids.length
+      ? await pool.query(
+          `
+            SELECT
+              id_asignacion,
+              to_char(fecha, 'YYYY-MM-DD') AS fecha,
+              horas::float AS horas,
+              observacion
+            FROM practices.registro_horas
+            WHERE id_asignacion = ANY($1::int[])
+              AND ($2::date IS NULL OR fecha >= $2::date)
+              AND ($3::date IS NULL OR fecha <= $3::date)
+            ORDER BY fecha, id_registro
+          `,
+          [ids, f.desde, f.hasta]
+        )
+      : { rows: [] };
+
+    return res.json({
+      data: {
+        asignaciones: assignments.rows,
+        registros: records.rows,
+      },
+    });
+  } catch (error) {
+    console.error('Error consultando reporte de horas:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las horas de práctica',
+    });
+  }
+});
+
+// Reporte 5: visitas por grupo del docente (rango = fecha de
+// la visita). La visita cuenta para el grupo si es del mismo
+// docente sobre la asignación (misma práctica + período, no
+// cancelada) de un integrante actual.
+app.get('/api/internal/reports/teacher-visits', async (req, res) => {
+  const f = reportFilters(req.query);
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          g.id_grupo,
+          g.nombre,
+          g.id_docente,
+          g.periodo_academico,
+          g.estado,
+          p.nombre AS practica,
+          COUNT(DISTINCT ge.id_estudiante)::int AS integrantes,
+          COUNT(DISTINCT v.id_visita)::int AS visitas,
+          COUNT(DISTINCT a.id_estudiante) FILTER (
+            WHERE v.id_visita IS NOT NULL
+          )::int AS estudiantes_visitados
+        FROM practices.grupo g
+        INNER JOIN practices.practica p
+          ON p.id_practica = g.id_practica
+        LEFT JOIN practices.grupo_estudiante ge
+          ON ge.id_grupo = g.id_grupo
+        LEFT JOIN practices.asignacion_practica a
+          ON a.id_estudiante = ge.id_estudiante
+         AND a.id_practica = g.id_practica
+         AND a.periodo_academico = g.periodo_academico
+         AND a.estado <> 'CANCELADA'
+        LEFT JOIN practices.visita_docente v
+          ON v.id_asignacion = a.id_asignacion
+         AND v.id_docente = g.id_docente
+         AND ($3::date IS NULL OR v.fecha >= $3::date)
+         AND ($4::date IS NULL OR v.fecha <= $4::date)
+        WHERE ($1::varchar IS NULL OR g.periodo_academico = $1::varchar)
+          AND ($2::int IS NULL OR g.id_docente = $2::int)
+        GROUP BY g.id_grupo, p.id_practica
+        ORDER BY g.periodo_academico DESC, g.nombre
+      `,
+      [f.periodo, f.docente, f.desde, f.hasta]
+    );
+
+    return res.json({ data: result.rows });
+  } catch (error) {
+    console.error('Error consultando visitas por grupo:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las visitas de los docentes',
+    });
+  }
+});
+
 const port = process.env.PORT || 3335;
 
 const server = app.listen(port, () => {

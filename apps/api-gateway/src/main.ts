@@ -2814,6 +2814,813 @@ app.get(
 );
 
 // ========================================================
+// COORDINADOR - GENERACIÓN DE REPORTES (CU "Generar Reportes")
+// Tipos: asignaciones, horas, desempeño académico y
+// seguimiento docente (el consolidado usa /api/reports/period).
+// Formato común para la vista previa y el PDF:
+//   { titulo, resumen[], secciones[{ titulo, columnas[], filas[] }] }
+// Sin identificadores internos en lo que se muestra.
+// ========================================================
+
+type ReportFormat =
+  | 'texto'
+  | 'entero'
+  | 'horas'
+  | 'nota'
+  | 'fecha'
+  | 'porcentaje'
+  | 'estado';
+
+interface ReportColumn {
+  clave: string;
+  etiqueta: string;
+  formato?: ReportFormat;
+}
+
+interface ReportSection {
+  titulo: string;
+  descripcion?: string;
+  columnas: ReportColumn[];
+  filas: Record<string, unknown>[];
+}
+
+interface ReportItem {
+  etiqueta: string;
+  valor: number | string | null;
+  formato?: ReportFormat;
+}
+
+const REPORT_STATES = ['ASIGNADA', 'EN_CURSO', 'FINALIZADA', 'CANCELADA'];
+
+const REPORT_TYPES: Record<string, { titulo: string; filtros: string[] }> = {
+  asignaciones: {
+    titulo: 'Reporte de asignaciones de práctica',
+    filtros: ['programa', 'practica', 'periodo', 'estado', 'desde', 'hasta'],
+  },
+  horas: {
+    titulo: 'Reporte de horas de práctica',
+    filtros: ['programa', 'practica', 'periodo', 'estudiante', 'desde', 'hasta'],
+  },
+  desempeno: {
+    titulo: 'Reporte de desempeño académico',
+    filtros: ['periodo', 'docente', 'grupo', 'estudiante', 'desde', 'hasta'],
+  },
+  'seguimiento-docente': {
+    titulo: 'Reporte de seguimiento docente',
+    filtros: ['periodo', 'docente', 'desde', 'hasta'],
+  },
+};
+
+function isValidIsoDate(value: string): boolean {
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(value + 'T00:00:00Z')) &&
+    new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value
+  );
+}
+
+// Valida solo los filtros que aplican al tipo; ignora el resto.
+function parseReportFilters(
+  tipo: string,
+  query: Request['query']
+): { error: string } | { filtros: Record<string, string> } {
+  const allowed = REPORT_TYPES[tipo].filtros;
+  const filtros: Record<string, string> = {};
+
+  for (const key of allowed) {
+    const raw = query[key];
+    const value = typeof raw === 'string' ? raw.trim() : '';
+
+    if (!value) {
+      continue;
+    }
+
+    if (['programa', 'practica', 'estudiante', 'docente', 'grupo'].includes(key)) {
+      const n = Number(value);
+
+      if (!Number.isInteger(n) || n <= 0) {
+        return { error: 'Uno de los filtros seleccionados no es válido' };
+      }
+    } else if (key === 'periodo') {
+      if (!/^\d{4}-[12]$/.test(value)) {
+        return {
+          error: 'El período académico debe tener el formato AAAA-1 o AAAA-2',
+        };
+      }
+    } else if (key === 'estado') {
+      if (!REPORT_STATES.includes(value)) {
+        return { error: 'El estado seleccionado no es válido' };
+      }
+    } else if (!isValidIsoDate(value)) {
+      return { error: 'El rango de fechas no es válido' };
+    }
+
+    filtros[key] = value;
+  }
+
+  if (filtros.desde && filtros.hasta && filtros.desde > filtros.hasta) {
+    return { error: 'La fecha inicial no puede ser posterior a la fecha final' };
+  }
+
+  return { filtros };
+}
+
+function toQuery(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value) {
+      search.set(key, value);
+    }
+  }
+
+  const text = search.toString();
+
+  return text ? '?' + text : '';
+}
+
+// GET interno que debe responder: lanza error si falla.
+async function fetchRequired<T>(url: string): Promise<T> {
+  const response = await internalFetch(url);
+  const body: any = await response.json();
+
+  if (!response.ok) {
+    throw new Error(body?.message ?? 'Error consultando ' + url);
+  }
+
+  return body.data as T;
+}
+
+// Nombres de estudiantes, docentes y tutores (incluye
+// inactivos). Si User Service falla se informa en avisos.
+async function loadReportPeople(ids: {
+  students?: number[];
+  teachers?: number[];
+  tutors?: number[];
+}) {
+  const unique = (list?: number[]) =>
+    [...new Set((list ?? []).map(Number))].filter((n) => n > 0);
+
+  const studentIds = unique(ids.students);
+  const teacherIds = unique(ids.teachers);
+  const tutorIds = unique(ids.tutors);
+
+  const byIds = (path: string, list: number[]) =>
+    list.length
+      ? fetchInternalData<any[]>(
+          USER_SERVICE_URL + path + '?ids=' + list.join(',')
+        )
+      : Promise.resolve([] as any[]);
+
+  const [students, teachers, tutors] = await Promise.all([
+    byIds('/api/internal/students/by-ids', studentIds),
+    byIds('/api/internal/teachers/by-ids', teacherIds),
+    byIds('/api/internal/tutors/by-ids', tutorIds),
+  ]);
+
+  const avisos: string[] = [];
+
+  if (students === null || teachers === null || tutors === null) {
+    avisos.push('No fue posible consultar algunos nombres (User Service).');
+  }
+
+  const index = (rows: any[] | null, key: string) =>
+    new Map((rows ?? []).map((row) => [Number(row[key]), row]));
+
+  const studentById = index(students, 'id_estudiante');
+  const teacherById = index(teachers, 'id_docente');
+  const tutorById = index(tutors, 'id_tutor');
+
+  return {
+    avisos,
+    student: (id: number) => {
+      const row = studentById.get(Number(id));
+
+      return {
+        estudiante: personName(row) ?? 'Estudiante sin nombre',
+        codigo: row?.codigo_estudiante ?? '—',
+      };
+    },
+    teacher: (id: number) =>
+      personName(teacherById.get(Number(id))) ?? 'Docente sin nombre',
+    tutor: (id: number | null) =>
+      id === null
+        ? 'Sin tutor'
+        : personName(tutorById.get(Number(id))) ?? 'Tutor sin nombre',
+  };
+}
+
+function sumBy<T>(rows: T[], pick: (row: T) => number): number {
+  return rows.reduce((total, row) => total + (Number(pick(row)) || 0), 0);
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function percent(part: number, total: number): number | null {
+  return total > 0 ? Math.round((part / total) * 100) : null;
+}
+
+// Promedio ponderado de promedios (por cantidad calificada)
+function weightedAverage(rows: { promedio: number | null; calificadas: number }[]) {
+  const graded = rows.filter((r) => r.promedio !== null && r.calificadas > 0);
+  const weight = sumBy(graded, (r) => r.calificadas);
+
+  return weight
+    ? round1(sumBy(graded, (r) => (r.promedio as number) * r.calificadas) / weight)
+    : null;
+}
+
+// ---------- Reporte: asignaciones de práctica ----------
+async function buildAssignmentsReport(filtros: Record<string, string>) {
+  const rows = await fetchRequired<any[]>(
+    PRACTICE_SERVICE_URL +
+      '/api/internal/reports/assignments' +
+      toQuery(filtros)
+  );
+
+  const people = await loadReportPeople({
+    students: rows.map((r) => r.id_estudiante),
+    tutors: rows.filter((r) => r.id_tutor !== null).map((r) => r.id_tutor),
+  });
+
+  const filas = rows.map((r) => ({
+    ...people.student(r.id_estudiante),
+    programa: r.programa,
+    practica: r.practica,
+    institucion: r.institucion,
+    tutor: people.tutor(r.id_tutor),
+    periodo: r.periodo_academico,
+    estado: r.estado,
+    fecha_inicio: r.fecha_inicio,
+    fecha_fin: r.fecha_fin,
+    horas_realizadas: r.horas_realizadas,
+    horas_requeridas: r.horas_requeridas,
+    evaluacion_tutor: r.evaluacion_tutor,
+    recomienda:
+      r.evaluacion_tutor === null ? '—' : r.recomienda_aprobacion ? 'Sí' : 'No',
+  }));
+
+  const count = (estado: string) => rows.filter((r) => r.estado === estado).length;
+  const evaluated = rows.filter((r) => r.evaluacion_tutor !== null);
+
+  return {
+    avisos: people.avisos,
+    resumen: [
+      { etiqueta: 'Asignaciones', valor: rows.length, formato: 'entero' },
+      {
+        etiqueta: 'Estudiantes',
+        valor: new Set(rows.map((r) => r.id_estudiante)).size,
+        formato: 'entero',
+      },
+      { etiqueta: 'Asignadas', valor: count('ASIGNADA'), formato: 'entero' },
+      { etiqueta: 'En curso', valor: count('EN_CURSO'), formato: 'entero' },
+      { etiqueta: 'Finalizadas', valor: count('FINALIZADA'), formato: 'entero' },
+      { etiqueta: 'Canceladas', valor: count('CANCELADA'), formato: 'entero' },
+      {
+        etiqueta: 'Con horas completas',
+        valor: rows.filter((r) => r.horas_realizadas >= r.horas_requeridas).length,
+        formato: 'entero',
+      },
+      {
+        etiqueta: 'Promedio evaluación del tutor',
+        valor: evaluated.length
+          ? round1(sumBy(evaluated, (r) => r.evaluacion_tutor) / evaluated.length)
+          : null,
+        formato: 'nota',
+      },
+    ] as ReportItem[],
+    secciones: [
+      {
+        titulo: 'Asignaciones',
+        columnas: [
+          { clave: 'estudiante', etiqueta: 'Estudiante' },
+          { clave: 'codigo', etiqueta: 'Código' },
+          { clave: 'programa', etiqueta: 'Programa' },
+          { clave: 'practica', etiqueta: 'Práctica' },
+          { clave: 'institucion', etiqueta: 'Institución' },
+          { clave: 'tutor', etiqueta: 'Tutor' },
+          { clave: 'periodo', etiqueta: 'Período' },
+          { clave: 'estado', etiqueta: 'Estado', formato: 'estado' },
+          { clave: 'fecha_inicio', etiqueta: 'Inicio', formato: 'fecha' },
+          { clave: 'fecha_fin', etiqueta: 'Fin', formato: 'fecha' },
+          { clave: 'horas_realizadas', etiqueta: 'Horas', formato: 'horas' },
+          { clave: 'horas_requeridas', etiqueta: 'Requeridas', formato: 'horas' },
+          { clave: 'evaluacion_tutor', etiqueta: 'Eval. tutor', formato: 'nota' },
+          { clave: 'recomienda', etiqueta: 'Recomienda' },
+        ],
+        filas,
+      },
+    ] as ReportSection[],
+  };
+}
+
+// ---------- Reporte: horas de práctica ----------
+async function buildHoursReport(filtros: Record<string, string>) {
+  const data = await fetchRequired<{ asignaciones: any[]; registros: any[] }>(
+    PRACTICE_SERVICE_URL + '/api/internal/reports/hours' + toQuery(filtros)
+  );
+
+  const people = await loadReportPeople({
+    students: data.asignaciones.map((r) => r.id_estudiante),
+  });
+
+  const withRange = Boolean(filtros.desde || filtros.hasta);
+  const byId = new Map(data.asignaciones.map((r) => [r.id_asignacion, r]));
+
+  const resumenFilas = data.asignaciones.map((r) => ({
+    ...people.student(r.id_estudiante),
+    practica: r.practica,
+    institucion: r.institucion,
+    periodo: r.periodo_academico,
+    estado: r.estado,
+    horas_rango: r.horas_rango,
+    horas_totales: r.horas_totales,
+    horas_requeridas: r.horas_requeridas,
+    avance: Math.min(
+      100,
+      r.horas_requeridas
+        ? Math.floor((r.horas_totales / r.horas_requeridas) * 100)
+        : 0
+    ),
+  }));
+
+  const detalle = data.registros.map((r) => {
+    const a = byId.get(r.id_asignacion);
+
+    return {
+      fecha: r.fecha,
+      estudiante: people.student(a?.id_estudiante).estudiante,
+      practica: a?.practica ?? '—',
+      horas: r.horas,
+      observacion: r.observacion ?? '—',
+    };
+  });
+
+  return {
+    avisos: people.avisos,
+    resumen: [
+      { etiqueta: 'Asignaciones', valor: resumenFilas.length, formato: 'entero' },
+      {
+        etiqueta: withRange ? 'Horas en el rango' : 'Horas registradas',
+        valor: round1(sumBy(data.asignaciones, (r) => r.horas_rango)),
+        formato: 'horas',
+      },
+      { etiqueta: 'Registros', valor: detalle.length, formato: 'entero' },
+      {
+        etiqueta: 'Con horas completas',
+        valor: data.asignaciones.filter((r) => r.horas_totales >= r.horas_requeridas)
+          .length,
+        formato: 'entero',
+      },
+    ] as ReportItem[],
+    secciones: [
+      {
+        titulo: 'Horas por estudiante',
+        descripcion: withRange
+          ? 'Horas del rango de fechas y acumuladas de toda la práctica.'
+          : undefined,
+        columnas: [
+          { clave: 'estudiante', etiqueta: 'Estudiante' },
+          { clave: 'codigo', etiqueta: 'Código' },
+          { clave: 'practica', etiqueta: 'Práctica' },
+          { clave: 'institucion', etiqueta: 'Institución' },
+          { clave: 'periodo', etiqueta: 'Período' },
+          { clave: 'estado', etiqueta: 'Estado', formato: 'estado' },
+          ...(withRange
+            ? [{ clave: 'horas_rango', etiqueta: 'En el rango', formato: 'horas' }]
+            : []),
+          { clave: 'horas_totales', etiqueta: 'Acumuladas', formato: 'horas' },
+          { clave: 'horas_requeridas', etiqueta: 'Requeridas', formato: 'horas' },
+          { clave: 'avance', etiqueta: 'Avance', formato: 'porcentaje' },
+        ],
+        filas: resumenFilas,
+      },
+      {
+        titulo: 'Detalle de registros',
+        columnas: [
+          { clave: 'fecha', etiqueta: 'Fecha', formato: 'fecha' },
+          { clave: 'estudiante', etiqueta: 'Estudiante' },
+          { clave: 'practica', etiqueta: 'Práctica' },
+          { clave: 'horas', etiqueta: 'Horas', formato: 'horas' },
+          { clave: 'observacion', etiqueta: 'Observación' },
+        ],
+        filas: detalle,
+      },
+    ] as ReportSection[],
+  };
+}
+
+// Grupos de las opciones de reportes filtrados.
+async function reportGroups(filtros: Record<string, string>) {
+  const options = await fetchRequired<any>(
+    PRACTICE_SERVICE_URL + '/api/internal/reports/options'
+  );
+
+  const practiceName = new Map(
+    options.practicas.map((p: any) => [Number(p.id_practica), p.nombre])
+  );
+
+  return (options.grupos as any[])
+    .filter(
+      (g) =>
+        (!filtros.periodo || g.periodo_academico === filtros.periodo) &&
+        (!filtros.docente || Number(g.id_docente) === Number(filtros.docente)) &&
+        (!filtros.grupo || Number(g.id_grupo) === Number(filtros.grupo))
+    )
+    .map((g) => ({
+      ...g,
+      practica: practiceName.get(Number(g.id_practica)) ?? '—',
+      estudiantes: (g.estudiantes ?? []).map(Number),
+    }));
+}
+
+// ---------- Reporte: desempeño académico ----------
+async function buildPerformanceReport(filtros: Record<string, string>) {
+  const groups = await reportGroups(filtros);
+
+  const rows = groups.length
+    ? await fetchRequired<any[]>(
+        ACTIVITY_SERVICE_URL +
+          '/api/internal/reports/academic' +
+          toQuery({
+            grupos: groups.map((g) => g.id_grupo).join(','),
+            estudiante: filtros.estudiante,
+            desde: filtros.desde,
+            hasta: filtros.hasta,
+          })
+      )
+    : [];
+
+  const studentFilter = filtros.estudiante ? Number(filtros.estudiante) : null;
+
+  // Integrantes actuales sin actividades aparecen en cero;
+  // los retirados aparecen si recibieron actividades.
+  const perGroup = groups.map((g) => {
+    const own = rows.filter((r) => Number(r.id_grupo) === Number(g.id_grupo));
+    const ids = new Set<number>([
+      ...own.map((r) => Number(r.id_estudiante)),
+      ...g.estudiantes.filter(
+        (id: number) => studentFilter === null || id === studentFilter
+      ),
+    ]);
+
+    return {
+      group: g,
+      rows: [...ids].map(
+        (id) =>
+          own.find((r) => Number(r.id_estudiante) === id) ?? {
+            id_estudiante: id,
+            actividades: 0,
+            entregadas: 0,
+            no_entregadas: 0,
+            calificadas: 0,
+            promedio: null,
+            evidencias: 0,
+            evidencias_revisadas: 0,
+          }
+      ),
+    };
+  }).filter((entry) => entry.rows.length > 0);
+
+  const all = perGroup.flatMap((entry) => entry.rows);
+
+  const people = await loadReportPeople({
+    students: all.map((r) => r.id_estudiante),
+    teachers: perGroup.map((entry) => entry.group.id_docente),
+  });
+
+  const columnas: ReportColumn[] = [
+    { clave: 'estudiante', etiqueta: 'Estudiante' },
+    { clave: 'codigo', etiqueta: 'Código' },
+    { clave: 'actividades', etiqueta: 'Actividades', formato: 'entero' },
+    { clave: 'entregadas', etiqueta: 'Entregadas', formato: 'entero' },
+    { clave: 'no_entregadas', etiqueta: 'No entregadas', formato: 'entero' },
+    { clave: 'cumplimiento', etiqueta: 'Cumplimiento', formato: 'porcentaje' },
+    { clave: 'calificadas', etiqueta: 'Calificadas', formato: 'entero' },
+    { clave: 'promedio', etiqueta: 'Promedio', formato: 'nota' },
+    { clave: 'evidencias', etiqueta: 'Evidencias', formato: 'entero' },
+    { clave: 'evidencias_revisadas', etiqueta: 'Revisadas', formato: 'entero' },
+  ];
+
+  const totalActividades = sumBy(all, (r) => r.actividades);
+  const totalEntregadas = sumBy(all, (r) => r.entregadas);
+
+  return {
+    avisos: people.avisos,
+    resumen: [
+      { etiqueta: 'Grupos', valor: perGroup.length, formato: 'entero' },
+      {
+        etiqueta: 'Estudiantes',
+        valor: new Set(all.map((r) => r.id_estudiante)).size,
+        formato: 'entero',
+      },
+      { etiqueta: 'Actividades asignadas', valor: totalActividades, formato: 'entero' },
+      { etiqueta: 'Entregadas', valor: totalEntregadas, formato: 'entero' },
+      {
+        etiqueta: 'Cumplimiento',
+        valor: percent(totalEntregadas, totalActividades),
+        formato: 'porcentaje',
+      },
+      {
+        etiqueta: 'Promedio general',
+        valor: weightedAverage(all),
+        formato: 'nota',
+      },
+      {
+        etiqueta: 'Evidencias revisadas',
+        valor: `${sumBy(all, (r) => r.evidencias_revisadas)} de ${sumBy(all, (r) => r.evidencias)}`,
+      },
+    ] as ReportItem[],
+    secciones: perGroup.map(({ group, rows: groupRows }) => ({
+      titulo: group.nombre,
+      descripcion:
+        `${group.practica} · Período ${group.periodo_academico} · ` +
+        `Docente: ${people.teacher(group.id_docente)}`,
+      columnas,
+      filas: groupRows
+        .map((r) => {
+          const identity = people.student(r.id_estudiante);
+
+          return {
+            ...identity,
+            estudiante: group.estudiantes.includes(Number(r.id_estudiante))
+              ? identity.estudiante
+              : identity.estudiante + ' (retirado)',
+            actividades: r.actividades,
+            entregadas: r.entregadas,
+            no_entregadas: r.no_entregadas,
+            cumplimiento: percent(r.entregadas, r.actividades),
+            calificadas: r.calificadas,
+            promedio: r.promedio,
+            evidencias: r.evidencias,
+            evidencias_revisadas: r.evidencias_revisadas,
+          };
+        })
+        .sort((a, b) => a.estudiante.localeCompare(b.estudiante, 'es')),
+    })) as ReportSection[],
+  };
+}
+
+// ---------- Reporte: seguimiento docente ----------
+async function buildTeacherFollowUpReport(filtros: Record<string, string>) {
+  const visits = await fetchRequired<any[]>(
+    PRACTICE_SERVICE_URL +
+      '/api/internal/reports/teacher-visits' +
+      toQuery({
+        periodo: filtros.periodo,
+        docente: filtros.docente,
+        desde: filtros.desde,
+        hasta: filtros.hasta,
+      })
+  );
+
+  const academic = visits.length
+    ? await fetchRequired<any[]>(
+        ACTIVITY_SERVICE_URL +
+          '/api/internal/reports/academic' +
+          toQuery({
+            grupos: visits.map((g) => g.id_grupo).join(','),
+            desde: filtros.desde,
+            hasta: filtros.hasta,
+          })
+      )
+    : [];
+
+  const people = await loadReportPeople({
+    teachers: visits.map((g) => g.id_docente),
+  });
+
+  const groups = visits.map((g) => {
+    const own = academic.filter((r) => Number(r.id_grupo) === Number(g.id_grupo));
+    const entregadas = sumBy(own, (r) => r.entregadas);
+    const calificadas = sumBy(own, (r) => r.calificadas);
+    const evidencias = sumBy(own, (r) => r.evidencias);
+    const revisadas = sumBy(own, (r) => r.evidencias_revisadas);
+
+    return {
+      id_docente: Number(g.id_docente),
+      grupo: g.nombre,
+      docente: people.teacher(g.id_docente),
+      practica: g.practica,
+      periodo: g.periodo_academico,
+      integrantes: g.integrantes,
+      visitas: g.visitas,
+      sin_visita: g.integrantes - g.estudiantes_visitados,
+      entregadas,
+      calificadas,
+      sin_calificar: entregadas - calificadas,
+      evidencias,
+      evidencias_revisadas: revisadas,
+      evidencias_pendientes: evidencias - revisadas,
+    };
+  });
+
+  const teacherIds = [...new Set(groups.map((g) => g.id_docente))];
+
+  const perTeacher = teacherIds
+    .map((id) => {
+      const own = groups.filter((g) => g.id_docente === id);
+
+      return {
+        docente: own[0].docente,
+        grupos: own.length,
+        integrantes: sumBy(own, (g) => g.integrantes),
+        visitas: sumBy(own, (g) => g.visitas),
+        sin_visita: sumBy(own, (g) => g.sin_visita),
+        calificadas: sumBy(own, (g) => g.calificadas),
+        sin_calificar: sumBy(own, (g) => g.sin_calificar),
+        evidencias_revisadas: sumBy(own, (g) => g.evidencias_revisadas),
+        evidencias_pendientes: sumBy(own, (g) => g.evidencias_pendientes),
+      };
+    })
+    .sort((a, b) => a.docente.localeCompare(b.docente, 'es'));
+
+  return {
+    avisos: people.avisos,
+    resumen: [
+      { etiqueta: 'Docentes', valor: perTeacher.length, formato: 'entero' },
+      { etiqueta: 'Grupos', valor: groups.length, formato: 'entero' },
+      { etiqueta: 'Visitas realizadas', valor: sumBy(groups, (g) => g.visitas), formato: 'entero' },
+      {
+        etiqueta: 'Estudiantes sin visita',
+        valor: sumBy(groups, (g) => g.sin_visita),
+        formato: 'entero',
+      },
+      {
+        etiqueta: 'Entregas sin calificar',
+        valor: sumBy(groups, (g) => g.sin_calificar),
+        formato: 'entero',
+      },
+      {
+        etiqueta: 'Evidencias sin revisar',
+        valor: sumBy(groups, (g) => g.evidencias_pendientes),
+        formato: 'entero',
+      },
+    ] as ReportItem[],
+    secciones: [
+      {
+        titulo: 'Resumen por docente',
+        columnas: [
+          { clave: 'docente', etiqueta: 'Docente asesor' },
+          { clave: 'grupos', etiqueta: 'Grupos', formato: 'entero' },
+          { clave: 'integrantes', etiqueta: 'Estudiantes', formato: 'entero' },
+          { clave: 'visitas', etiqueta: 'Visitas', formato: 'entero' },
+          { clave: 'sin_visita', etiqueta: 'Sin visita', formato: 'entero' },
+          { clave: 'calificadas', etiqueta: 'Calificadas', formato: 'entero' },
+          { clave: 'sin_calificar', etiqueta: 'Sin calificar', formato: 'entero' },
+          { clave: 'evidencias_revisadas', etiqueta: 'Evid. revisadas', formato: 'entero' },
+          { clave: 'evidencias_pendientes', etiqueta: 'Evid. pendientes', formato: 'entero' },
+        ],
+        filas: perTeacher,
+      },
+      {
+        titulo: 'Detalle por grupo',
+        descripcion:
+          'Visitas del docente a la institución de cada integrante; ' +
+          'entregas y evidencias de las actividades del grupo.',
+        columnas: [
+          { clave: 'grupo', etiqueta: 'Grupo' },
+          { clave: 'docente', etiqueta: 'Docente' },
+          { clave: 'practica', etiqueta: 'Práctica' },
+          { clave: 'periodo', etiqueta: 'Período' },
+          { clave: 'integrantes', etiqueta: 'Estudiantes', formato: 'entero' },
+          { clave: 'visitas', etiqueta: 'Visitas', formato: 'entero' },
+          { clave: 'sin_visita', etiqueta: 'Sin visita', formato: 'entero' },
+          { clave: 'sin_calificar', etiqueta: 'Sin calificar', formato: 'entero' },
+          { clave: 'evidencias_pendientes', etiqueta: 'Evid. pendientes', formato: 'entero' },
+        ],
+        filas: groups.map(({ id_docente: _id, ...row }) => row),
+      },
+    ] as ReportSection[],
+  };
+}
+
+// Opciones de los filtros, con nombres resueltos.
+app.get(
+  '/api/reports/options',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const options = await fetchRequired<any>(
+        PRACTICE_SERVICE_URL + '/api/internal/reports/options'
+      );
+
+      const people = await loadReportPeople({
+        students: options.estudiantes.map((r: any) => r.id_estudiante),
+        teachers: options.grupos.map((g: any) => g.id_docente),
+      });
+
+      const students = new Map<number, any>();
+
+      for (const row of options.estudiantes) {
+        const id = Number(row.id_estudiante);
+        const entry =
+          students.get(id) ?? {
+            id_estudiante: id,
+            ...people.student(id),
+            relaciones: [],
+          };
+
+        entry.relaciones.push({
+          id_practica: row.id_practica,
+          id_programa: row.id_programa,
+          periodo_academico: row.periodo_academico,
+        });
+        students.set(id, entry);
+      }
+
+      const teacherIds = [
+        ...new Set<number>(options.grupos.map((g: any) => Number(g.id_docente))),
+      ];
+
+      return res.json({
+        data: {
+          programas: options.programas,
+          practicas: options.practicas,
+          periodos: options.periodos,
+          estados: REPORT_STATES,
+          grupos: options.grupos,
+          docentes: teacherIds
+            .map((id) => ({ id_docente: id, nombre: people.teacher(id) }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+          estudiantes: [...students.values()].sort((a, b) =>
+            a.estudiante.localeCompare(b.estudiante, 'es')
+          ),
+        },
+        avisos: people.avisos,
+      });
+    } catch (error) {
+      console.error('Error consultando opciones de reportes:', error);
+
+      return res.status(503).json({
+        message: 'No fue posible cargar las opciones de los reportes',
+      });
+    }
+  }
+);
+
+const REPORT_BUILDERS: Record<
+  string,
+  (filtros: Record<string, string>) => Promise<{
+    avisos: string[];
+    resumen: ReportItem[];
+    secciones: ReportSection[];
+  }>
+> = {
+  asignaciones: buildAssignmentsReport,
+  horas: buildHoursReport,
+  desempeno: buildPerformanceReport,
+  'seguimiento-docente': buildTeacherFollowUpReport,
+};
+
+app.get(
+  '/api/reports/generate/:tipo',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    const tipo = String(req.params.tipo);
+
+    if (!REPORT_TYPES[tipo]) {
+      return res.status(404).json({
+        message: 'El tipo de reporte no existe',
+      });
+    }
+
+    const parsed = parseReportFilters(tipo, req.query);
+
+    if ('error' in parsed) {
+      return res.status(400).json({ message: parsed.error });
+    }
+
+    try {
+      const report = await REPORT_BUILDERS[tipo](parsed.filtros);
+
+      return res.json({
+        data: {
+          tipo,
+          titulo: REPORT_TYPES[tipo].titulo,
+          filtros: parsed.filtros,
+          generado_en: new Date().toISOString(),
+          total_registros: sumBy(report.secciones, (s) => s.filas.length),
+          resumen: report.resumen,
+          secciones: report.secciones,
+        },
+        avisos: report.avisos,
+      });
+    } catch (error) {
+      console.error('Error generando reporte ' + tipo + ':', error);
+
+      return res.status(503).json({
+        message: 'No fue posible generar el reporte. Intente nuevamente',
+      });
+    }
+  }
+);
+
+// ========================================================
 // HORAS DE PRÁCTICA (CU "Realizar Seguimiento de Prácticas")
 // El Coordinador registra, corrige y elimina horas por
 // asignación (queda como registrado_por, tomado del token);

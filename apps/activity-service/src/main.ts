@@ -3057,6 +3057,101 @@ app.get(
 // aparecen; quien consume los completa con ceros.
 // ======================================================
 
+// Reporte de desempeño académico (CU "Generar Reportes"):
+// una fila por grupo + estudiante desde el snapshot, con
+// rango opcional sobre la fecha límite de las actividades.
+app.get('/api/internal/reports/academic', async (req, res) => {
+  const ids = [
+    ...new Set(
+      String(req.query.grupos ?? '')
+        .split(',')
+        .map((value) => positiveInt(value.trim()))
+        .filter((value): value is number => value !== null)
+    ),
+  ];
+
+  const idEstudiante = positiveInt(req.query.estudiante);
+  const isoDate = (value: unknown) =>
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(value + 'T00:00:00Z'))
+      ? value
+      : null;
+  const desde = isoDate(req.query.desde);
+  const hasta = isoDate(req.query.hasta);
+
+  if (ids.length === 0) {
+    return res.json({ data: [] });
+  }
+
+  if (ids.length > 500) {
+    return res.status(400).json({
+      message: 'Se pueden consultar máximo 500 grupos',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          a.id_grupo,
+          ae.id_estudiante,
+          COUNT(*)::int AS actividades,
+          COUNT(en.id_entrega)::int AS entregadas,
+          COUNT(*) FILTER (
+            WHERE en.id_entrega IS NULL
+              AND (
+                a.estado <> 'ABIERTA'
+                OR (
+                  (a.fecha_limite + a.hora_limite)
+                  AT TIME ZONE 'America/Bogota'
+                ) <= NOW()
+              )
+          )::int AS no_entregadas,
+          COUNT(rt.id_retroalimentacion)::int AS calificadas,
+          ROUND(AVG(rt.calificacion), 1)::float AS promedio,
+          COALESCE(SUM(evc.total), 0)::int AS evidencias,
+          COALESCE(SUM(evc.revisadas), 0)::int AS evidencias_revisadas
+        -- Una fila por actividad_estudiante (entrega y
+        -- retroalimentación son 1:1); evidencias por subconsulta.
+        FROM activities.actividad a
+        INNER JOIN activities.actividad_estudiante ae
+          ON ae.id_actividad = a.id_actividad
+        LEFT JOIN activities.entrega en
+          ON en.id_actividad_estudiante =
+             ae.id_actividad_estudiante
+        LEFT JOIN activities.retroalimentacion rt
+          ON rt.id_entrega = en.id_entrega
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*) AS total,
+            COUNT(rv.id_revision) AS revisadas
+          FROM activities.evidencia ev
+          LEFT JOIN activities.revision_evidencia rv
+            ON rv.id_evidencia = ev.id_evidencia
+          WHERE ev.id_entrega = en.id_entrega
+        ) evc ON TRUE
+        WHERE a.id_grupo = ANY($1::int[])
+          AND ($2::int IS NULL OR ae.id_estudiante = $2::int)
+          AND ($3::date IS NULL OR a.fecha_limite >= $3::date)
+          AND ($4::date IS NULL OR a.fecha_limite <= $4::date)
+        GROUP BY a.id_grupo, ae.id_estudiante
+      `,
+      [ids, idEstudiante, desde, hasta]
+    );
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Error consultando reporte académico:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar el desempeño académico',
+    });
+  }
+});
+
 app.get('/api/internal/reports/groups-progress', async (req, res) => {
   const ids = [
     ...new Set(

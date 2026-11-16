@@ -1340,6 +1340,59 @@ app.get('/api/internal/tutors/by-ids', async (req, res) => {
   }
 });
 
+// Docentes por identificadores (incluye inactivos): nombres
+// en reportes históricos.
+app.get('/api/internal/teachers/by-ids', async (req, res) => {
+  const ids = String(req.query.ids ?? '')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) {
+    return res.json({ data: [] });
+  }
+
+  if (uniqueIds.length > 500) {
+    return res.status(400).json({
+      message: 'Se pueden consultar máximo 500 docentes',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          d.id_docente,
+          u.nombres,
+          u.apellidos,
+          u.correo,
+          u.estado
+        FROM users.docente_asesor d
+        INNER JOIN users.usuario u
+          ON u.id_usuario = d.id_usuario
+        WHERE d.id_docente = ANY($1::int[])
+        ORDER BY u.nombres, u.apellidos
+      `,
+      [uniqueIds]
+    );
+
+    return res.json({
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error(
+      'Error consultando docentes por identificadores:',
+      error
+    );
+
+    return res.status(500).json({
+      message: 'No fue posible consultar los docentes',
+    });
+  }
+});
+
 const port = process.env.PORT || 3334;
 
 const server = app.listen(port, () => {
