@@ -22,11 +22,13 @@ import {
   tutorInactivo,
 } from './assignment.model';
 import { TutorRecordView } from '../tutor/tutor-record-view';
+import { AssignmentHoursCard } from
+  '../practice-hours/assignment-hours-card';
 
 @Component({
   selector: 'app-assignment-detail',
   standalone: true,
-  imports: [CommonModule, TutorRecordView],
+  imports: [CommonModule, TutorRecordView, AssignmentHoursCard],
   templateUrl: './assignment-detail.html',
   styleUrl: './assignment-detail.scss',
 })

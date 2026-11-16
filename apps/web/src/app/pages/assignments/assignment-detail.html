@@ -138,6 +138,11 @@
       </div>
     </div>
 
+    <app-assignment-hours-card
+      class="hours-record"
+      [idAsignacion]="a.id_asignacion"
+    />
+
     <app-tutor-record-view
       class="tutor-record"
       [endpoint]="'/practice-assignments/' + a.id_asignacion + '/tutor-record'"

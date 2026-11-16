@@ -251,7 +251,8 @@ button:disabled {
   }
 }
 
-// Registro del tutor receptor, alineado con la tarjeta.
+// Horas y registro del tutor receptor, alineados con la tarjeta.
+.hours-record,
 .tutor-record {
   display: block;
   max-width: 980px;

@@ -1529,6 +1529,26 @@ app.patch(
         });
       }
 
+      // La práctica no se finaliza sin cumplir las horas
+      // requeridas registradas por el Coordinador.
+      if (nuevoEstado === 'FINALIZADA') {
+        const hours = hoursSummary(
+          await findHoursAssignment(idAsignacion)
+        );
+
+        if (!hours.completadas) {
+          const realizadas = String(hours.horas_realizadas).replace(
+            '.',
+            ','
+          );
+
+          return res.status(409).json({
+            message:
+              `El estudiante debe completar las horas requeridas antes de finalizar la práctica (${realizadas} de ${hours.horas_requeridas} h registradas)`,
+          });
+        }
+      }
+
       // Con tutor, la práctica no se cierra sin el concepto
       // de la institución (evaluación final del tutor).
       if (
@@ -3669,6 +3689,584 @@ app.get('/api/internal/reports/period', async (req, res) => {
     });
   }
 });
+
+// ======================================================
+// CU "REALIZAR SEGUIMIENTO DE PRÁCTICAS" - HORAS DE PRÁCTICA
+//
+// El Coordinador registra las horas realizadas por cada
+// asignación (BS1); el Estudiante consulta su progreso (BS4).
+// Requeridas = practica.horas_requeridas; el acumulado se
+// calcula con SUM. Solo se registra, corrige o elimina con la
+// asignación EN_CURSO; fecha entre el inicio de la asignación
+// (o su creación, si fecha_inicio es nula) y hoy en Bogotá.
+// ======================================================
+
+const MAX_OBSERVACION_HORAS = 2000;
+
+// Asignación con su práctica, institución, rango de fechas
+// permitido y horas acumuladas. Sin filtro: todas.
+const HOURS_ASSIGNMENT_SQL = `
+  SELECT
+    a.id_asignacion,
+    a.id_estudiante,
+    a.id_practica,
+    p.nombre AS practica,
+    a.id_institucion,
+    i.nombre AS institucion,
+    a.id_tutor,
+    a.periodo_academico,
+    a.estado,
+    to_char(a.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+    to_char(a.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
+    p.horas_requeridas,
+    COALESCE(h.realizadas, 0) AS horas_realizadas,
+    COALESCE(h.registros, 0) AS total_registros,
+    to_char(h.ultima_fecha, 'YYYY-MM-DD') AS ultima_fecha,
+    -- fecha_inicio se fija con CURRENT_DATE del servidor (UTC),
+    -- que puede ir un día adelante de Bogotá; las asignaciones
+    -- antiguas pueden no tenerla y se usa su fecha de creación.
+    to_char(
+      LEAST(
+        COALESCE(
+          a.fecha_inicio,
+          (a.creado_en AT TIME ZONE 'America/Bogota')::date
+        ),
+        (NOW() AT TIME ZONE 'America/Bogota')::date
+      ),
+      'YYYY-MM-DD'
+    ) AS fecha_minima,
+    to_char(
+      (NOW() AT TIME ZONE 'America/Bogota')::date,
+      'YYYY-MM-DD'
+    ) AS hoy
+  FROM practices.asignacion_practica a
+  INNER JOIN practices.practica p
+    ON p.id_practica = a.id_practica
+  INNER JOIN practices.institucion i
+    ON i.id_institucion = a.id_institucion
+  LEFT JOIN (
+    SELECT
+      id_asignacion,
+      SUM(horas) AS realizadas,
+      COUNT(*) AS registros,
+      MAX(fecha) AS ultima_fecha
+    FROM practices.registro_horas
+    GROUP BY id_asignacion
+  ) h
+    ON h.id_asignacion = a.id_asignacion
+`;
+
+const HOURS_RECORD_COLUMNS = `
+  id_registro,
+  id_asignacion,
+  to_char(fecha, 'YYYY-MM-DD') AS fecha,
+  horas,
+  observacion,
+  registrado_por,
+  creado_en,
+  actualizado_en
+`;
+
+// NUMERIC llega como texto desde pg.
+function toHours(value: unknown): number {
+  return Math.round(Number(value ?? 0) * 10) / 10;
+}
+
+// Resumen de avance: requeridas, realizadas, pendientes, %.
+function hoursSummary(row: any) {
+  const requeridas = Number(row.horas_requeridas);
+  const realizadas = toHours(row.horas_realizadas);
+
+  return {
+    id_asignacion: row.id_asignacion,
+    id_estudiante: row.id_estudiante,
+    id_practica: row.id_practica,
+    practica: row.practica,
+    id_institucion: row.id_institucion,
+    institucion: row.institucion,
+    id_tutor: row.id_tutor,
+    periodo_academico: row.periodo_academico,
+    estado: row.estado,
+    fecha_inicio: row.fecha_inicio,
+    fecha_fin: row.fecha_fin,
+    horas_requeridas: requeridas,
+    horas_realizadas: realizadas,
+    horas_pendientes: Math.max(
+      0,
+      Math.round((requeridas - realizadas) * 10) / 10
+    ),
+    porcentaje:
+      requeridas > 0
+        ? Math.min(100, Math.floor((realizadas / requeridas) * 100))
+        : 0,
+    completadas: realizadas >= requeridas,
+    total_registros: Number(row.total_registros),
+    ultima_fecha: row.ultima_fecha,
+  };
+}
+
+function mapHoursRecord(row: any) {
+  return { ...row, horas: toHours(row.horas) };
+}
+
+async function findHoursAssignment(idAsignacion: number) {
+  const result = await pool.query(
+    `${HOURS_ASSIGNMENT_SQL} WHERE a.id_asignacion = $1`,
+    [idAsignacion]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+async function listHoursRecords(idAsignacion: number) {
+  const result = await pool.query(
+    `
+      SELECT ${HOURS_RECORD_COLUMNS}
+      FROM practices.registro_horas
+      WHERE id_asignacion = $1
+      ORDER BY fecha DESC, id_registro DESC
+    `,
+    [idAsignacion]
+  );
+
+  return result.rows.map(mapHoursRecord);
+}
+
+// Detalle completo: resumen + historial + permisos de edición.
+async function hoursDetail(assignment: any) {
+  return {
+    ...hoursSummary(assignment),
+    registros: await listHoursRecords(assignment.id_asignacion),
+    puede_registrar: assignment.estado === 'EN_CURSO',
+    fecha_minima: assignment.fecha_minima,
+    fecha_maxima: assignment.hoy,
+    horas_maximas_registro: Number(assignment.horas_requeridas),
+  };
+}
+
+// Valida fecha, horas, observación y coordinador.
+// Devuelve el mensaje de error o los valores limpios.
+function validateHoursRecord(
+  body: any,
+  assignment: any
+):
+  | { error: string }
+  | {
+      fecha: string;
+      horas: number;
+      observacion: string | null;
+      registradoPor: number;
+    } {
+  const fecha =
+    typeof body?.fecha === 'string' ? body.fecha.trim() : '';
+
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(fecha) ||
+    Number.isNaN(Date.parse(fecha + 'T00:00:00Z')) ||
+    new Date(fecha + 'T00:00:00Z').toISOString().slice(0, 10) !==
+      fecha
+  ) {
+    return { error: 'La fecha del registro no es válida' };
+  }
+
+  if (fecha > assignment.hoy) {
+    return { error: 'La fecha del registro no puede ser futura' };
+  }
+
+  if (fecha < assignment.fecha_minima) {
+    return {
+      error:
+        'La fecha del registro no puede ser anterior al inicio de la práctica',
+    };
+  }
+
+  const rawHoras = body?.horas;
+  const horas =
+    typeof rawHoras === 'number'
+      ? rawHoras
+      : typeof rawHoras === 'string' && rawHoras.trim() !== ''
+        ? Number(rawHoras.trim().replace(',', '.'))
+        : NaN;
+
+  if (!Number.isFinite(horas) || horas <= 0) {
+    return {
+      error: 'La cantidad de horas debe ser un número mayor que cero',
+    };
+  }
+
+  if (Math.abs(horas * 10 - Math.round(horas * 10)) > 1e-9) {
+    return {
+      error: 'La cantidad de horas admite como máximo un decimal',
+    };
+  }
+
+  const maximo = Number(assignment.horas_requeridas);
+
+  if (horas > maximo) {
+    return {
+      error: `Un registro no puede superar las ${maximo} horas requeridas de la práctica`,
+    };
+  }
+
+  const observacion =
+    typeof body?.observacion === 'string'
+      ? body.observacion.trim()
+      : '';
+
+  if (observacion.length > MAX_OBSERVACION_HORAS) {
+    return {
+      error: `La observación no puede superar ${MAX_OBSERVACION_HORAS} caracteres`,
+    };
+  }
+
+  const registradoPor = parsePositiveId(body?.registrado_por);
+
+  if (!registradoPor) {
+    return { error: 'No se identificó al coordinador que registra' };
+  }
+
+  return {
+    fecha,
+    horas: Math.round(horas * 10) / 10,
+    observacion: observacion || null,
+    registradoPor,
+  };
+}
+
+// Listado del Coordinador: todas las asignaciones con su avance
+// (el filtrado por período/estado lo hace la interfaz).
+app.get('/api/practice-hours', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `${HOURS_ASSIGNMENT_SQL}
+       ORDER BY a.periodo_academico DESC, a.id_asignacion DESC`
+    );
+
+    return res.json({ data: result.rows.map(hoursSummary) });
+  } catch (error) {
+    console.error('Error consultando horas de práctica:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las horas de práctica',
+    });
+  }
+});
+
+app.get('/api/practice-hours/:idAsignacion', async (req, res) => {
+  const idAsignacion = parsePositiveId(req.params.idAsignacion);
+
+  if (!idAsignacion) {
+    return res.status(400).json({
+      message: 'El identificador de la asignación no es válido',
+    });
+  }
+
+  try {
+    const assignment = await findHoursAssignment(idAsignacion);
+
+    if (!assignment) {
+      return res.status(404).json({
+        message: 'Asignación de práctica no encontrada',
+      });
+    }
+
+    return res.json({ data: await hoursDetail(assignment) });
+  } catch (error) {
+    console.error('Error consultando horas de la asignación:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las horas de la asignación',
+    });
+  }
+});
+
+app.post('/api/practice-hours/:idAsignacion', async (req, res) => {
+  const idAsignacion = parsePositiveId(req.params.idAsignacion);
+
+  if (!idAsignacion) {
+    return res.status(400).json({
+      message: 'El identificador de la asignación no es válido',
+    });
+  }
+
+  try {
+    const assignment = await findHoursAssignment(idAsignacion);
+
+    if (!assignment) {
+      return res.status(404).json({
+        message: 'Asignación de práctica no encontrada',
+      });
+    }
+
+    if (assignment.estado !== 'EN_CURSO') {
+      return res.status(409).json({
+        message:
+          'Solo se registran horas mientras la práctica está en curso',
+      });
+    }
+
+    const values = validateHoursRecord(req.body, assignment);
+
+    if ('error' in values) {
+      return res.status(400).json({ message: values.error });
+    }
+
+    const result = await pool.query(
+      `
+        INSERT INTO practices.registro_horas (
+          id_asignacion,
+          fecha,
+          horas,
+          observacion,
+          registrado_por
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING ${HOURS_RECORD_COLUMNS}
+      `,
+      [
+        idAsignacion,
+        values.fecha,
+        values.horas,
+        values.observacion,
+        values.registradoPor,
+      ]
+    );
+
+    const updated = await findHoursAssignment(idAsignacion);
+    const summary = hoursSummary(updated);
+
+    return res.status(201).json({
+      message: summary.completadas
+        ? 'Horas registradas correctamente. Horas completadas'
+        : 'Horas registradas correctamente',
+      data: {
+        registro: mapHoursRecord(result.rows[0]),
+        resumen: summary,
+      },
+    });
+  } catch (error) {
+    console.error('Error registrando horas:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible registrar las horas',
+    });
+  }
+});
+
+// Busca el registro dentro de la asignación y verifica que la
+// asignación siga EN_CURSO. Devuelve el error HTTP o los datos.
+async function findEditableHoursRecord(
+  idAsignacion: number,
+  idRegistro: number
+): Promise<
+  | { status: number; message: string }
+  | { assignment: any }
+> {
+  const assignment = await findHoursAssignment(idAsignacion);
+
+  if (!assignment) {
+    return {
+      status: 404,
+      message: 'Asignación de práctica no encontrada',
+    };
+  }
+
+  const record = await pool.query(
+    `
+      SELECT id_registro
+      FROM practices.registro_horas
+      WHERE id_registro = $1
+        AND id_asignacion = $2
+    `,
+    [idRegistro, idAsignacion]
+  );
+
+  if ((record.rowCount ?? 0) === 0) {
+    return { status: 404, message: 'Registro de horas no encontrado' };
+  }
+
+  if (assignment.estado !== 'EN_CURSO') {
+    return {
+      status: 409,
+      message:
+        'Las horas solo se pueden modificar mientras la práctica está en curso',
+    };
+  }
+
+  return { assignment };
+}
+
+app.put(
+  '/api/practice-hours/:idAsignacion/records/:idRegistro',
+  async (req, res) => {
+    const idAsignacion = parsePositiveId(req.params.idAsignacion);
+    const idRegistro = parsePositiveId(req.params.idRegistro);
+
+    if (!idAsignacion || !idRegistro) {
+      return res.status(400).json({
+        message: 'Asignación o registro no válidos',
+      });
+    }
+
+    try {
+      const found = await findEditableHoursRecord(
+        idAsignacion,
+        idRegistro
+      );
+
+      if ('status' in found) {
+        return res
+          .status(found.status)
+          .json({ message: found.message });
+      }
+
+      const values = validateHoursRecord(req.body, found.assignment);
+
+      if ('error' in values) {
+        return res.status(400).json({ message: values.error });
+      }
+
+      const result = await pool.query(
+        `
+          UPDATE practices.registro_horas
+          SET
+            fecha = $1,
+            horas = $2,
+            observacion = $3,
+            registrado_por = $4,
+            actualizado_en = NOW()
+          WHERE id_registro = $5
+          RETURNING ${HOURS_RECORD_COLUMNS}
+        `,
+        [
+          values.fecha,
+          values.horas,
+          values.observacion,
+          values.registradoPor,
+          idRegistro,
+        ]
+      );
+
+      return res.json({
+        message: 'Registro de horas corregido correctamente',
+        data: {
+          registro: mapHoursRecord(result.rows[0]),
+          resumen: hoursSummary(
+            await findHoursAssignment(idAsignacion)
+          ),
+        },
+      });
+    } catch (error) {
+      console.error('Error corrigiendo registro de horas:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible corregir el registro de horas',
+      });
+    }
+  }
+);
+
+app.delete(
+  '/api/practice-hours/:idAsignacion/records/:idRegistro',
+  async (req, res) => {
+    const idAsignacion = parsePositiveId(req.params.idAsignacion);
+    const idRegistro = parsePositiveId(req.params.idRegistro);
+
+    if (!idAsignacion || !idRegistro) {
+      return res.status(400).json({
+        message: 'Asignación o registro no válidos',
+      });
+    }
+
+    try {
+      const found = await findEditableHoursRecord(
+        idAsignacion,
+        idRegistro
+      );
+
+      if ('status' in found) {
+        return res
+          .status(found.status)
+          .json({ message: found.message });
+      }
+
+      await pool.query(
+        `DELETE FROM practices.registro_horas WHERE id_registro = $1`,
+        [idRegistro]
+      );
+
+      return res.json({
+        message: 'Registro de horas eliminado correctamente',
+        data: {
+          resumen: hoursSummary(
+            await findHoursAssignment(idAsignacion)
+          ),
+        },
+      });
+    } catch (error) {
+      console.error('Error eliminando registro de horas:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible eliminar el registro de horas',
+      });
+    }
+  }
+);
+
+// Mi Seguimiento (Estudiante): sus asignaciones no canceladas,
+// la vigente primero, cada una con su resumen e historial.
+app.get(
+  '/api/internal/students/:idEstudiante/practice-hours',
+  async (req, res) => {
+    const idEstudiante = parsePositiveId(req.params.idEstudiante);
+
+    if (!idEstudiante) {
+      return res.status(400).json({
+        message: 'El identificador del estudiante no es válido',
+      });
+    }
+
+    try {
+      const result = await pool.query(
+        `${HOURS_ASSIGNMENT_SQL}
+         WHERE a.id_estudiante = $1
+           AND a.estado <> 'CANCELADA'
+         ORDER BY
+           CASE a.estado
+             WHEN 'EN_CURSO' THEN 0
+             WHEN 'ASIGNADA' THEN 1
+             ELSE 2
+           END,
+           a.periodo_academico DESC,
+           a.id_asignacion DESC`,
+        [idEstudiante]
+      );
+
+      const data = [];
+
+      for (const row of result.rows) {
+        const detail = await hoursDetail(row);
+
+        // El estudiante solo consulta: sin permisos de edición
+        // ni identificadores internos de quién registró.
+        data.push({
+          ...hoursSummary(row),
+          registros: detail.registros.map(
+            ({ registrado_por, ...registro }) => registro
+          ),
+        });
+      }
+
+      return res.json({ data });
+    } catch (error) {
+      console.error('Error consultando horas del estudiante:', error);
+
+      return res.status(500).json({
+        message: 'No fue posible consultar el seguimiento de horas',
+      });
+    }
+  }
+);
 
 const port = process.env.PORT || 3335;
 

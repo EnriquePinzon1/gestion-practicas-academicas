@@ -2612,6 +2612,151 @@ app.get(
 );
 
 // ========================================================
+// HORAS DE PRÁCTICA (CU "Realizar Seguimiento de Prácticas")
+// El Coordinador registra, corrige y elimina horas por
+// asignación (queda como registrado_por, tomado del token);
+// el Estudiante consulta su progreso en Mi Seguimiento.
+// ========================================================
+
+app.get(
+  '/api/practice-hours',
+  requireAuth,
+  requireCoordinator,
+  async (_req, res) => {
+    try {
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/practice-hours'
+      );
+
+      const body: any = await response.json();
+
+      if (!response.ok) {
+        return res.status(response.status).json(body);
+      }
+
+      return res.json({
+        data: await withAssignmentPeople(body.data ?? []),
+      });
+    } catch (error) {
+      console.error('Error consultando horas de práctica:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/practice-hours/:id',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL + '/api/practice-hours/' +
+          encodeURIComponent(String(req.params.id))
+      );
+
+      const body: any = await response.json();
+
+      if (!response.ok) {
+        return res.status(response.status).json(body);
+      }
+
+      const [data] = await withAssignmentPeople([body.data]);
+
+      return res.json({ data });
+    } catch (error) {
+      console.error(
+        'Error consultando horas de la asignación:',
+        error
+      );
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/practice-hours/:id',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/practice-hours/' +
+        encodeURIComponent(String(req.params.id)),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...req.body,
+          registrado_por: res.locals.profile.id_usuario,
+        }),
+      },
+      'Error registrando horas:'
+    )
+);
+
+app.put(
+  '/api/practice-hours/:id/records/:idRegistro',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/practice-hours/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/records/' +
+        encodeURIComponent(String(req.params.idRegistro)),
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...req.body,
+          registrado_por: res.locals.profile.id_usuario,
+        }),
+      },
+      'Error corrigiendo registro de horas:'
+    )
+);
+
+app.delete(
+  '/api/practice-hours/:id/records/:idRegistro',
+  requireAuth,
+  requireCoordinator,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/practice-hours/' +
+        encodeURIComponent(String(req.params.id)) +
+        '/records/' +
+        encodeURIComponent(String(req.params.idRegistro)),
+      { method: 'DELETE' },
+      'Error eliminando registro de horas:'
+    )
+);
+
+// Mi Seguimiento: el id del estudiante sale del token.
+app.get(
+  '/api/student/follow-up',
+  requireAuth,
+  requireStudent,
+  (_req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/internal/students/' +
+        res.locals.student.id_estudiante +
+        '/practice-hours',
+      { method: 'GET' },
+      'Error consultando seguimiento del estudiante:'
+    )
+);
+
+// ========================================================
 // ENTREGAS - ESTUDIANTE
 // El id del estudiante sale siempre del token, nunca del
 // cliente: solo puede ver y entregar sus actividades.

@@ -1,0 +1,204 @@
+<section class="follow-up-page">
+
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Seguimiento</span>
+      <h1>Horas de práctica</h1>
+      <p>
+        Control de las horas realizadas por cada estudiante en
+        su práctica. Las horas se registran mientras la práctica
+        está en curso.
+      </p>
+    </div>
+  </header>
+
+  @if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  }
+
+  <section class="summary-grid">
+    <article class="summary-card">
+      <span>Prácticas en curso</span>
+      <strong>{{ inProgress().length }}</strong>
+    </article>
+    <article class="summary-card">
+      <span>Con horas completas</span>
+      <strong>{{ inProgressCompleted() }}</strong>
+    </article>
+    <article class="summary-card">
+      <span>Horas registradas (en curso)</span>
+      <strong>{{ format(hoursInProgress()) }}</strong>
+    </article>
+    <article class="summary-card">
+      <span>En curso sin registros</span>
+      <strong>{{ withoutRecords() }}</strong>
+    </article>
+  </section>
+
+  <section class="filters hours-filters">
+
+    <div class="field">
+      <label for="search">Buscar</label>
+      <input
+        id="search"
+        type="text"
+        placeholder="Estudiante, código, práctica o institución..."
+        [ngModel]="searchTerm()"
+        (ngModelChange)="searchTerm.set($event)"
+      />
+    </div>
+
+    <div class="field">
+      <label for="period">Período</label>
+      <select
+        id="period"
+        [ngModel]="periodFilter()"
+        (ngModelChange)="periodFilter.set($event)"
+      >
+        <option value="TODOS">Todos</option>
+        @for (p of periods(); track p) {
+          <option [value]="p">{{ p }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="status">Estado</label>
+      <select
+        id="status"
+        [ngModel]="statusFilter()"
+        (ngModelChange)="statusFilter.set($event)"
+      >
+        <option value="EN_CURSO">En curso</option>
+        <option value="ASIGNADA">Asignadas</option>
+        <option value="FINALIZADA">Finalizadas</option>
+        <option value="CANCELADA">Canceladas</option>
+        <option value="TODAS">Todas</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="progress">Avance</label>
+      <select
+        id="progress"
+        [ngModel]="progressFilter()"
+        (ngModelChange)="progressFilter.set($event)"
+      >
+        <option value="TODOS">Todos</option>
+        <option value="PENDIENTES">Con horas pendientes</option>
+        <option value="COMPLETADAS">Horas completadas</option>
+      </select>
+    </div>
+
+    <button
+      type="button"
+      class="secondary-button clear-button"
+      (click)="clearFilters()"
+    >
+      Limpiar filtros
+    </button>
+
+  </section>
+
+  <section class="panel">
+
+    <div class="panel-heading">
+      <h2>Estudiantes</h2>
+      <p>{{ filtered().length }} resultado(s)</p>
+    </div>
+
+    @if (loading()) {
+      <div class="loading ui-loader">Cargando horas de práctica...</div>
+    } @else if (filtered().length === 0) {
+      <div class="empty-state">
+        <h3>Sin resultados</h3>
+        <p>
+          @if (assignments().length === 0) {
+            Aún no hay asignaciones de práctica registradas.
+          } @else {
+            Ningún estudiante coincide con los filtros.
+          }
+        </p>
+      </div>
+    } @else {
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Estudiante</th>
+              <th>Práctica</th>
+              <th>Institución</th>
+              <th>Período</th>
+              <th>Estado</th>
+              <th>Horas</th>
+              <th>Último registro</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of filtered(); track a.id_asignacion) {
+              <tr>
+                <td>
+                  <div class="student">
+                    <strong>{{ studentName(a) }}</strong>
+                    <span>
+                      {{ a.estudiante?.codigo_estudiante ?? 'Sin código' }}
+                      @if (a.estudiante?.estado === 'INACTIVO') {
+                        · <span class="inactive-mark">Inactivo</span>
+                      }
+                    </span>
+                  </div>
+                </td>
+                <td>{{ a.practica }}</td>
+                <td>{{ a.institucion }}</td>
+                <td class="nowrap">{{ a.periodo_academico }}</td>
+                <td>
+                  <span [class]="'status status-' + a.estado.toLowerCase()">
+                    {{ statusLabel(a.estado) }}
+                  </span>
+                </td>
+                <td>
+                  <div class="mini-progress">
+                    <span class="nowrap">
+                      <strong>{{ format(a.horas_realizadas) }}</strong>
+                      / {{ format(a.horas_requeridas) }} h
+                    </span>
+                    <div class="mini-bar">
+                      <div
+                        class="mini-bar-fill"
+                        [class.done]="a.completadas"
+                        [style.width.%]="a.porcentaje"
+                      ></div>
+                    </div>
+                  </div>
+                </td>
+                <td class="nowrap">
+                  @if (a.ultima_fecha) {
+                    {{ a.ultima_fecha | date: 'dd/MM/yyyy' : 'UTC' }}
+                  } @else {
+                    <span class="muted">—</span>
+                  }
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="view(a.id_asignacion)"
+                  >
+                    @if (a.estado === 'EN_CURSO') {
+                      Registrar horas
+                    } @else {
+                      Ver horas
+                    }
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+  </section>
+
+</section>

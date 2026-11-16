@@ -61,6 +61,12 @@ import { TutorAssignmentDetail } from
   './pages/tutor/tutor-assignment-detail';
 
 import { Reports } from './pages/reports/reports';
+import { PracticeHours } from
+  './pages/practice-hours/practice-hours';
+import { PracticeHoursDetail } from
+  './pages/practice-hours/practice-hours-detail';
+import { StudentFollowUp } from
+  './pages/student-follow-up/student-follow-up';
 
 export const appRoutes: Route[] = [
 
@@ -189,6 +195,24 @@ export const appRoutes: Route[] = [
   {
     path: 'reportes',
     component: Reports,
+    canActivate: [authGuard],
+  },
+  // ==========================================
+  // SEGUIMIENTO - HORAS DE PRÁCTICA
+  // ==========================================
+  {
+    path: 'horas',
+    component: PracticeHours,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'horas/:id',
+    component: PracticeHoursDetail,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'mi-seguimiento',
+    component: StudentFollowUp,
     canActivate: [authGuard],
   },
 

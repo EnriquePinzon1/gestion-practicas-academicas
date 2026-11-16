@@ -1,0 +1,19 @@
+// Mi Seguimiento: complementa follow-up.scss y tutor.scss.
+
+.practice-selector {
+  grid-template-columns: minmax(0, 520px);
+}
+
+.heading-with-status {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.readonly-note {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+}
