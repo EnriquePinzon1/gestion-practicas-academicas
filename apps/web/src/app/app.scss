@@ -229,3 +229,74 @@
     flex-shrink: 0;
   }
 }
+
+/* ------------------------------------------------------
+   Aviso: el servidor (Render, plan gratuito) despierta
+   ------------------------------------------------------ */
+
+.server-waking {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 14px 18px;
+
+  color: var(--ui-warning);
+  background: var(--ui-warning-bg);
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  box-shadow: var(--ui-shadow-medium);
+
+  font-size: 14px;
+  line-height: 1.4;
+
+  animation: server-waking-in var(--ui-normal) var(--ui-ease);
+
+  strong,
+  span {
+    display: block;
+  }
+
+  strong {
+    font-size: 15px;
+  }
+
+  @media (max-width: 850px) {
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    max-width: none;
+  }
+}
+
+.server-waking-spinner {
+  flex-shrink: 0;
+
+  width: 20px;
+  height: 20px;
+
+  border: 3px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+
+  animation: server-waking-spin 0.8s linear infinite;
+}
+
+@keyframes server-waking-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes server-waking-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

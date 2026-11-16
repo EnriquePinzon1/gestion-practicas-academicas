@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import {
   NavigationEnd,
   Router,
@@ -35,6 +35,9 @@ interface AuthProfile {
 })
 export class App {
   isLoginPage = signal(false);
+
+  // Aviso global mientras el servidor (Render) despierta.
+  readonly serverWaking = inject(ApiService).serverWaking;
 
   userRole = signal<string | null>(null);
   userName = signal('');

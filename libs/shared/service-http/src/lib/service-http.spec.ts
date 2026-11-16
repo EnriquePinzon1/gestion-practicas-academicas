@@ -136,7 +136,11 @@ describe('requireInternalToken', () => {
 
 describe('createInternalFetch', () => {
   it('agrega el secreto y conserva las cabeceras de la llamada', async () => {
-    const baseFetch = vi.fn().mockResolvedValue(new Response('{}'));
+    const baseFetch = vi.fn().mockResolvedValue(
+      new Response('{}', {
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      })
+    );
     const internalFetch = createInternalFetch(
       TOKEN,
       baseFetch as unknown as typeof fetch
@@ -154,6 +158,178 @@ describe('createInternalFetch', () => {
     expect(init.method).toBe('POST');
     expect(headers.get(INTERNAL_TOKEN_HEADER)).toBe(TOKEN);
     expect(headers.get('content-type')).toBe('application/json');
+  });
+});
+
+describe('createInternalFetch: servicio dormido', () => {
+  const URL_PRACTICAS = 'https://practice.onrender.com/api/practices';
+
+  // Reloj simulado: sleep avanza el tiempo sin esperar de verdad.
+  function fakeClock() {
+    let t = 0;
+    const waits: number[] = [];
+
+    return {
+      waits,
+      now: () => t,
+      sleep: async (ms: number) => {
+        waits.push(ms);
+        t += ms;
+      },
+    };
+  }
+
+  const wakeUp = () =>
+    new Response('<html>Service waking up</html>', {
+      status: 503,
+      headers: { 'Content-Type': 'text/html' },
+    });
+
+  const ok = () =>
+    new Response('{"data":[]}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  it('reintenta mientras el proxy responde 502/503/504 sin JSON', async () => {
+    const clock = fakeClock();
+    const baseFetch = vi
+      .fn()
+      .mockResolvedValueOnce(wakeUp())
+      .mockResolvedValueOnce(new Response('Bad Gateway', { status: 502 }))
+      .mockResolvedValueOnce(ok());
+    const internalFetch = createInternalFetch(
+      TOKEN,
+      baseFetch as unknown as typeof fetch,
+      { sleep: clock.sleep, now: clock.now }
+    );
+
+    const response = await internalFetch(URL_PRACTICAS);
+
+    expect(response.status).toBe(200);
+    expect(baseFetch).toHaveBeenCalledTimes(3);
+    expect(clock.waits).toEqual([1000, 2000]);
+  });
+
+  it('reintenta un POST: el proxy no entregó la petición', async () => {
+    const clock = fakeClock();
+    const baseFetch = vi
+      .fn()
+      .mockResolvedValueOnce(wakeUp())
+      .mockResolvedValueOnce(ok());
+    const internalFetch = createInternalFetch(
+      TOKEN,
+      baseFetch as unknown as typeof fetch,
+      { sleep: clock.sleep, now: clock.now }
+    );
+
+    await internalFetch(URL_PRACTICAS, { method: 'POST', body: '{"a":1}' });
+
+    expect(baseFetch).toHaveBeenCalledTimes(2);
+    expect(baseFetch.mock.calls[1][1].body).toBe('{"a":1}');
+  });
+
+  it('reintenta una página HTML de la plataforma aunque venga con 200', async () => {
+    const clock = fakeClock();
+    const baseFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('<!DOCTYPE html><title>Waking up</title>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+      .mockResolvedValueOnce(ok());
+    const internalFetch = createInternalFetch(
+      TOKEN,
+      baseFetch as unknown as typeof fetch,
+      { sleep: clock.sleep, now: clock.now }
+    );
+
+    const response = await internalFetch(URL_PRACTICAS);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: [] });
+    expect(baseFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('no reintenta un 404 HTML de Express: la ruta no existe', async () => {
+    const clock = fakeClock();
+    const baseFetch = vi.fn().mockResolvedValue(
+      new Response('<!DOCTYPE html><pre>Cannot GET /api/x</pre>', {
+        status: 404,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'X-Powered-By': 'Express',
+        },
+      })
+    );
+    const internalFetch = createInternalFetch(
+      TOKEN,
+      baseFetch as unknown as typeof fetch,
+      { sleep: clock.sleep, now: clock.now }
+    );
+
+    const response = await internalFetch(URL_PRACTICAS);
+
+    expect(response.status).toBe(404);
+    expect(baseFetch).toHaveBeenCalledOnce();
+  });
+
+  it('no reintenta un 503 en JSON: lo respondió la aplicación', async () => {
+    const clock = fakeClock();
+    const baseFetch = vi.fn().mockResolvedValue(
+      new Response('{"message":"Practice Service no disponible"}', {
+        status: 503,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      })
+    );
+    const internalFetch = createInternalFetch(
+      TOKEN,
+      baseFetch as unknown as typeof fetch,
+      { sleep: clock.sleep, now: clock.now }
+    );
+
+    const response = await internalFetch(URL_PRACTICAS);
+
+    expect(response.status).toBe(503);
+    expect(baseFetch).toHaveBeenCalledOnce();
+  });
+
+  it('se rinde al agotar el tiempo y devuelve la última respuesta', async () => {
+    const clock = fakeClock();
+    const baseFetch = vi.fn().mockImplementation(async () => wakeUp());
+    const internalFetch = createInternalFetch(
+      TOKEN,
+      baseFetch as unknown as typeof fetch,
+      { sleep: clock.sleep, now: clock.now, wakeTimeoutMs: 10_000 }
+    );
+
+    const response = await internalFetch(URL_PRACTICAS);
+
+    expect(response.status).toBe(503);
+    expect(clock.now()).toBeLessThanOrEqual(10_000);
+    expect(clock.waits).toEqual([1000, 2000, 3000, 4000]);
+  });
+
+  it('error de red: reintenta un GET pocas veces, nunca un POST', async () => {
+    const clock = fakeClock();
+    const failing = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+    const internalFetch = createInternalFetch(
+      TOKEN,
+      failing as unknown as typeof fetch,
+      { sleep: clock.sleep, now: clock.now }
+    );
+
+    await expect(internalFetch(URL_PRACTICAS)).rejects.toThrow('fetch failed');
+    expect(failing).toHaveBeenCalledTimes(3);
+
+    failing.mockClear();
+
+    await expect(
+      internalFetch(URL_PRACTICAS, { method: 'POST', body: '{}' })
+    ).rejects.toThrow('fetch failed');
+    expect(failing).toHaveBeenCalledOnce();
   });
 });
 
