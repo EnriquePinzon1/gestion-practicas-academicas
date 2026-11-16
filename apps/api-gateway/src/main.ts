@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   createCors,
   createInternalFetch,
+  isWakeUpResponse,
   readAllowedOrigins,
   readInternalToken,
   resolveServiceUrl,
@@ -77,6 +78,24 @@ const supabase = createClient(
 // MIDDLEWARE: AUTENTICACIÓN
 // ========================================================
 
+// Si el user-service no pudo responder (caído, dormido o error
+// interno), se informa 503 en lugar de un falso "sin perfil".
+// Devuelve true si ya respondió.
+function respondIfUserServiceDown(
+  res: Response,
+  response: globalThis.Response
+): boolean {
+  if (response.status >= 500 || isWakeUpResponse(response)) {
+    res.status(503).json({
+      message:
+        'El servicio de usuarios no está disponible en este momento. Intenta de nuevo en unos segundos.',
+    });
+    return true;
+  }
+
+  return false;
+}
+
 async function requireAuth(
   req: Request,
   res: Response,
@@ -129,6 +148,10 @@ async function requireCoordinator(
     const response = await internalFetch(
       `${USER_SERVICE_URL}/api/internal/users/by-auth/${authUser.id}`
     );
+
+    if (respondIfUserServiceDown(res, response)) {
+      return;
+    }
 
     if (!response.ok) {
       return res.status(403).json({
@@ -189,6 +212,10 @@ async function requireTeacher(
     const response = await internalFetch(
       `${USER_SERVICE_URL}/api/internal/teachers/by-auth/${authUser.id}`
     );
+
+    if (respondIfUserServiceDown(res, response)) {
+      return;
+    }
 
     if (!response.ok) {
       return res.status(403).json({
@@ -272,6 +299,10 @@ async function requireStudent(
       `${USER_SERVICE_URL}/api/internal/students/by-auth/${encodeURIComponent(authUser.id)}`
     );
 
+    if (respondIfUserServiceDown(res, response)) {
+      return;
+    }
+
     if (!response.ok) {
       return res.status(403).json({
         message:
@@ -340,6 +371,10 @@ async function requireTutor(
     const response = await internalFetch(
       `${USER_SERVICE_URL}/api/internal/tutors/by-auth/${encodeURIComponent(authUser.id)}`
     );
+
+    if (respondIfUserServiceDown(res, response)) {
+      return;
+    }
 
     if (!response.ok) {
       return res.status(403).json({
@@ -433,6 +468,10 @@ app.get(
       const response = await internalFetch(
         `${USER_SERVICE_URL}/api/internal/users/by-auth/${user.id}`
       );
+
+      if (respondIfUserServiceDown(res, response)) {
+        return;
+      }
 
       if (!response.ok) {
         return res.status(403).json({

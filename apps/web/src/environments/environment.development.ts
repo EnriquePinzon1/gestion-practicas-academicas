@@ -5,4 +5,6 @@ export const environment = {
   apiUrl: 'http://localhost:3333/api',
   supabaseUrl: 'https://rsxafehaakmxqambbdbz.supabase.co',
   supabasePublishableKey: 'sb_publishable_sDBJqtS5XEMOcL4C3dr0_g_NsCdijwO',
+  // En local los servicios no se duermen.
+  serviceWakeUrls: [] as string[],
 };

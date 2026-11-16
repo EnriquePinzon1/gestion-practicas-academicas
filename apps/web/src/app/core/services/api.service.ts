@@ -14,6 +14,34 @@ export class ApiService {
   // true mientras alguna petición espera a que el servidor despierte.
   readonly serverWaking = computed(() => this.slowRequests() > 0);
 
+  private lastWakeAt = 0;
+
+  constructor() {
+    // Al abrir la app se despiertan los servicios internos, para
+    // que estén listos cuando el Gateway los consulte.
+    this.wakeServices();
+  }
+
+  // En Render gratuito un servicio dormido solo despierta con una
+  // petición externa: el navegador consulta el health público de
+  // cada servicio (sin esperar la respuesta). Como mucho una vez
+  // por minuto y solo mientras alguien usa la aplicación.
+  private wakeServices() {
+    const now = Date.now();
+
+    if (now - this.lastWakeAt < WAKE_INTERVAL_MS) {
+      return;
+    }
+
+    this.lastWakeAt = now;
+
+    for (const url of environment.serviceWakeUrls) {
+      fetch(url, { mode: 'no-cors', cache: 'no-store' }).catch(
+        () => undefined
+      );
+    }
+  }
+
   private async getToken(): Promise<string> {
     const {
       data: { session },
@@ -164,6 +192,8 @@ async patch<T>(
     const slowTimer = setTimeout(() => {
       markedSlow = true;
       this.slowRequests.update((n) => n + 1);
+      // Algún servicio pudo dormirse con la app abierta.
+      this.wakeServices();
     }, SLOW_REQUEST_MS);
 
     try {
@@ -232,6 +262,8 @@ async patch<T>(
 
 // Tras este tiempo se muestra el aviso "el servidor se está iniciando".
 const SLOW_REQUEST_MS = 5000;
+// Mínimo entre dos intentos de despertar los servicios.
+const WAKE_INTERVAL_MS = 60000;
 // Render (plan gratuito) puede tardar más de un minuto en despertar.
 const WAKE_TIMEOUT_MS = 100000;
 const WAKE_UP_STATUSES = new Set([502, 503, 504]);
