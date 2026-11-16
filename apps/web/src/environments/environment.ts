@@ -16,5 +16,6 @@ export const environment = {
     'https://gestion-practicas-user-service.onrender.com/api',
     'https://gestion-practicas-practice-service.onrender.com/api',
     'https://gestion-practicas-activity-service.onrender.com/api',
+    'https://gestion-practicas-audit-service.onrender.com/api',
   ],
 };

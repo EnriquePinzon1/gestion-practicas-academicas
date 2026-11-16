@@ -16,6 +16,7 @@ import {
   readInternalToken,
   resolveServiceUrl,
 } from '@gestion-practicas/service-http';
+import { AUDIT_EVENTS, createAudit } from './audit';
 
 // ========================================================
 // MICROSERVICIOS
@@ -36,7 +37,31 @@ const ACTIVITY_SERVICE_URL = resolveServiceUrl(
   'http://localhost:3336'
 );
 
+const AUDIT_SERVICE_URL = resolveServiceUrl(
+  'AUDIT_SERVICE_URL',
+  'http://localhost:3337'
+);
+
 const internalFetch = createInternalFetch(readInternalToken());
+
+// Envía el evento al Audit Service sin bloquear la respuesta
+// al usuario (ver audit.ts).
+const audit = createAudit(async (event) => {
+  const response = await internalFetch(
+    AUDIT_SERVICE_URL + '/api/events',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      'Audit Service respondió HTTP ' + response.status
+    );
+  }
+});
 
 const app = express();
 
@@ -444,6 +469,75 @@ async function forwardToActivityService(
 }
 
 // ========================================================
+// AUDITORÍA - Solo Coordinador activo
+// Registro de eventos de negocio (Audit Service, MongoDB).
+// ========================================================
+
+async function forwardToAuditService(
+  res: Response,
+  path: string,
+  errorLabel: string
+) {
+  try {
+    const response = await internalFetch(AUDIT_SERVICE_URL + path);
+
+    if (isWakeUpResponse(response)) {
+      return res.status(503).json({
+        message:
+          'El servicio de auditoría se está iniciando. Intenta de nuevo en unos segundos.',
+      });
+    }
+
+    const data = await response.json();
+
+    return res.status(response.status).json(data);
+  } catch (error) {
+    console.error(errorLabel, error);
+
+    return res.status(503).json({
+      message: 'El servicio de auditoría no está disponible',
+    });
+  }
+}
+
+app.get(
+  '/api/audit/events',
+  requireAuth,
+  requireCoordinator,
+  (req, res) => {
+    const params = new URLSearchParams();
+
+    for (const key of ['modulo', 'tipo', 'rol', 'desde', 'hasta', 'q', 'page', 'limit']) {
+      const value = req.query[key];
+
+      if (typeof value === 'string' && value.trim()) {
+        params.set(key, value.trim());
+      }
+    }
+
+    const query = params.toString();
+
+    return forwardToAuditService(
+      res,
+      '/api/events' + (query ? '?' + query : ''),
+      'Error consultando auditoría:'
+    );
+  }
+);
+
+app.get(
+  '/api/audit/options',
+  requireAuth,
+  requireCoordinator,
+  (_req, res) =>
+    forwardToAuditService(
+      res,
+      '/api/events/options',
+      'Error consultando opciones de auditoría:'
+    )
+);
+
+// ========================================================
 // GATEWAY HEALTH
 // ========================================================
 
@@ -673,6 +767,7 @@ app.post(
   '/api/users',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.usuarioCreado),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -711,6 +806,7 @@ app.patch(
   '/api/users/:id/status',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.usuarioEstado),
   async (req, res) => {
 const authenticatedProfile = res.locals.profile;
 const targetUserId = Number(req.params.id);
@@ -787,6 +883,7 @@ app.patch(
   '/api/users/:id',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.usuarioActualizado),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -899,6 +996,7 @@ app.post(
   '/api/institutions',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.institucionCreada),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -987,6 +1085,7 @@ app.post(
   '/api/institutions/:id/tutors',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.tutorVinculado),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -1009,6 +1108,7 @@ app.patch(
   '/api/institutions/:id/tutors/:idTutor/status',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.vinculoTutorEstado),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -1057,6 +1157,7 @@ app.post(
   '/api/practices',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.practicaCreada),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1112,6 +1213,7 @@ app.patch(
   '/api/practices/:id',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.practicaActualizada),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1143,6 +1245,7 @@ app.patch(
   '/api/practices/:id/status',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.practicaEstado),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1384,6 +1487,7 @@ app.post(
   '/api/practice-assignments',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.asignacionCreada),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1424,6 +1528,7 @@ app.patch(
   '/api/practice-assignments/:id/status',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.asignacionEstado),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1549,6 +1654,7 @@ app.post(
   '/api/groups',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.grupoCreado),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1605,6 +1711,7 @@ app.patch(
   '/api/groups/:id',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.grupoActualizado),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1637,6 +1744,7 @@ app.patch(
   '/api/groups/:id/students',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.grupoIntegrantes),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1673,6 +1781,7 @@ app.patch(
   '/api/groups/:id/status',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.grupoEstado),
   async (req, res) => {
     try {
       const response = await internalFetch(
@@ -1878,6 +1987,7 @@ app.post(
   '/api/activities',
   requireAuth,
   requireTeacher,
+  audit(AUDIT_EVENTS.actividadCreada),
   async (req, res) => {
     try {
       const teacher = res.locals.teacher;
@@ -1971,6 +2081,7 @@ app.patch(
   '/api/activities/:id',
   requireAuth,
   requireTeacher,
+  audit(AUDIT_EVENTS.actividadActualizada),
   async (req, res) => {
     try {
       const teacher = res.locals.teacher;
@@ -2027,6 +2138,7 @@ app.patch(
   '/api/activities/:id/status',
   requireAuth,
   requireTeacher,
+  audit(AUDIT_EVENTS.actividadCerrada),
   async (req, res) => {
     try {
       const teacher = res.locals.teacher;
@@ -2097,6 +2209,7 @@ app.put(
   '/api/activities/:id/submissions/:idEntrega/feedback',
   requireAuth,
   requireTeacher,
+  audit(AUDIT_EVENTS.calificacion),
   (req, res) =>
     forwardToActivityService(
       res,
@@ -2217,6 +2330,7 @@ app.put(
   '/api/teacher/evidences/:idEvidencia/review',
   requireAuth,
   requireTeacher,
+  audit(AUDIT_EVENTS.revisionEvidencia),
   (req, res) =>
     forwardToActivityService(
       res,
@@ -2263,6 +2377,7 @@ app.post(
   '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante/visits',
   requireAuth,
   requireTeacher,
+  audit(AUDIT_EVENTS.visitaRegistrada),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -2283,6 +2398,7 @@ app.put(
   '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante/visits/:idVisita',
   requireAuth,
   requireTeacher,
+  audit(AUDIT_EVENTS.visitaCorregida),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -2450,6 +2566,7 @@ app.post(
   '/api/tutor/assignments/:id/observations',
   requireAuth,
   requireTutor,
+  audit(AUDIT_EVENTS.observacionRegistrada),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -2472,6 +2589,7 @@ app.put(
   '/api/tutor/assignments/:id/observations/:idObservacion',
   requireAuth,
   requireTutor,
+  audit(AUDIT_EVENTS.observacionCorregida),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -2510,6 +2628,7 @@ app.put(
   '/api/tutor/assignments/:id/evaluation',
   requireAuth,
   requireTutor,
+  audit(AUDIT_EVENTS.evaluacionTutor),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -3693,6 +3812,7 @@ app.post(
   '/api/practice-hours/:id',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.horasRegistradas),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -3714,6 +3834,7 @@ app.put(
   '/api/practice-hours/:id/records/:idRegistro',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.horasCorregidas),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -3737,6 +3858,7 @@ app.delete(
   '/api/practice-hours/:id/records/:idRegistro',
   requireAuth,
   requireCoordinator,
+  audit(AUDIT_EVENTS.horasEliminadas),
   (req, res) =>
     forwardToPracticeService(
       res,
@@ -3806,6 +3928,7 @@ app.put(
   '/api/student/activities/:id/submission',
   requireAuth,
   requireStudent,
+  audit(AUDIT_EVENTS.entrega),
   (req, res) =>
     forwardToActivityService(
       res,
@@ -3854,6 +3977,7 @@ app.post(
   '/api/student/activities/:id/evidences',
   requireAuth,
   requireStudent,
+  audit(AUDIT_EVENTS.evidenciaAdjuntada),
   rejectLargeUpload,
   express.raw({
     type: () => true,
@@ -3885,6 +4009,7 @@ app.delete(
   '/api/student/activities/:id/evidences/:idEvidencia',
   requireAuth,
   requireStudent,
+  audit(AUDIT_EVENTS.evidenciaEliminada),
   (req, res) =>
     forwardToActivityService(
       res,

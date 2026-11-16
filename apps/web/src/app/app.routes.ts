@@ -199,6 +199,17 @@ export const appRoutes: Route[] = [
       import('./pages/reports/reports').then((m) => m.Reports),
     canActivate: [authGuard],
   },
+
+  // ==========================================
+  // COORDINADOR - AUDITORÍA (Audit Service, MongoDB)
+  // ==========================================
+
+  {
+    path: 'auditoria',
+    loadComponent: () =>
+      import('./pages/audit/audit-log').then((m) => m.AuditLog),
+    canActivate: [authGuard],
+  },
   // ==========================================
   // SEGUIMIENTO - HORAS DE PRÁCTICA
   // ==========================================

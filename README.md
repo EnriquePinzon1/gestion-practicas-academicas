@@ -39,21 +39,28 @@ La solución utiliza una arquitectura basada en frontend, API Gateway y microser
                          │        :3333        │
                          └──────────┬──────────┘
                                     │
-                ┌───────────────────┼───────────────────┐
-                │                   │                   │
-                ▼                   ▼                   ▼
-       ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-       │  User Service   │ │Practice Service │ │Activity Service │
-       │      :3334      │ │      :3335      │ │      :3336      │
-       └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-                │                   │                   │
-                └───────────────────┼───────────────────┘
-                                    ▼
-                       ┌─────────────────────────┐
-                       │        Supabase         │
-                       │ PostgreSQL + Auth       │
+                ┌───────────────────┼───────────────────┬───────────────────┐
+                │                   │                   │                   │
+                ▼                   ▼                   ▼                   ▼
+       ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+       │  User Service   │ │Practice Service │ │Activity Service │ │  Audit Service  │
+       │      :3334      │ │      :3335      │ │      :3336      │ │      :3337      │
+       └────────┬────────┘ └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+                │                   │                   │                   │
+                └───────────────────┼───────────────────┘                   ▼
+                                    ▼                              ┌─────────────────┐
+                       ┌─────────────────────────┐                 │  MongoDB Atlas  │
+                       │        Supabase         │                 │   (auditoría)   │
+                       │ PostgreSQL + Auth       │                 └─────────────────┘
                        └─────────────────────────┘
 ```
+
+Persistencia políglota: el dominio académico vive en PostgreSQL
+(relacional, con integridad referencial) y el registro de auditoría
+en MongoDB (documentos inmutables de esquema flexible). El API Gateway
+envía al Audit Service un evento por cada operación de negocio exitosa
+(quién, qué, cuándo y sobre qué registro) sin bloquear la respuesta al
+usuario; el Coordinador lo consulta en `/auditoria`.
 
 ### Componentes principales
 
@@ -64,7 +71,9 @@ La solución utiliza una arquitectura basada en frontend, API Gateway y microser
 | `user-service` | Gestión de usuarios, estudiantes y docentes | 3334 |
 | `practice-service` | Gestión de prácticas y grupos | 3335 |
 | `activity-service` | Gestión de actividades de seguimiento | 3336 |
+| `audit-service` | Registro de auditoría de eventos de negocio (MongoDB) | 3337 |
 | Supabase | Autenticación y base de datos PostgreSQL | Remoto |
+| MongoDB Atlas | Base de datos documental del registro de auditoría | Remoto |
 
 ---
 
@@ -81,6 +90,7 @@ La solución utiliza una arquitectura basada en frontend, API Gateway y microser
 | Supabase | PostgreSQL administrado y autenticación |
 | `@supabase/supabase-js` | Integración con Supabase Auth |
 | `pg` | Conexión de Node.js con PostgreSQL |
+| MongoDB / `mongodb` | Registro de auditoría (persistencia políglota) |
 | pnpm | Gestión de dependencias |
 | Git | Control de versiones |
 | GitHub | Repositorio colaborativo |
@@ -108,7 +118,9 @@ gestion-practicas-academicas/
 │   ├── practice-service-e2e/
 │   │
 │   ├── activity-service/
-│   └── activity-service-e2e/
+│   ├── activity-service-e2e/
+│   │
+│   └── audit-service/
 │
 ├── .env.example
 ├── .gitignore
@@ -398,6 +410,14 @@ PORT=3335 pnpm nx serve practice-service
 PORT=3336 pnpm nx serve activity-service
 ```
 
+### Audit Service
+
+Requiere `MONGODB_URI` en el `.env` (MongoDB Atlas o local).
+
+```bash
+PORT=3337 pnpm nx serve audit-service
+```
+
 En Windows PowerShell se utiliza:
 
 ```powershell
@@ -405,6 +425,7 @@ $env:PORT=3333; pnpm nx serve api-gateway
 $env:PORT=3334; pnpm nx serve user-service
 $env:PORT=3335; pnpm nx serve practice-service
 $env:PORT=3336; pnpm nx serve activity-service
+$env:PORT=3337; pnpm nx serve audit-service
 ```
 
 ---
@@ -418,6 +439,7 @@ curl http://localhost:3333/api
 curl http://localhost:3334/api
 curl http://localhost:3335/api
 curl http://localhost:3336/api
+curl http://localhost:3337/api
 ```
 
 La aplicación Angular debe encontrarse disponible en:
@@ -438,6 +460,7 @@ pnpm nx build api-gateway
 pnpm nx build user-service
 pnpm nx build practice-service
 pnpm nx build activity-service
+pnpm nx build audit-service
 ```
 
 ---

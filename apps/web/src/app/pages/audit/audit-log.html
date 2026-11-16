@@ -1,0 +1,233 @@
+<section class="follow-up-page">
+
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Control</span>
+      <h1>Auditoría</h1>
+      <p>
+        Registro de las operaciones realizadas en el sistema:
+        quién hizo cada cambio, cuándo y sobre qué registro.
+        Solo se registran las operaciones que se completaron.
+      </p>
+    </div>
+  </header>
+
+  @if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  }
+
+  <form class="filters audit-filters" (ngSubmit)="apply()">
+
+    <div class="field search-field">
+      <label for="audit-search">Buscar</label>
+      <input
+        id="audit-search"
+        name="search"
+        type="text"
+        placeholder="Nombre o correo de quien realizó la acción..."
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+      />
+    </div>
+
+    <div class="field">
+      <label for="audit-module">Módulo</label>
+      <select
+        id="audit-module"
+        name="module"
+        [ngModel]="module()"
+        (ngModelChange)="changeModule($event)"
+      >
+        <option value="">Todos</option>
+        @for (m of options()?.modulos ?? []; track m) {
+          <option [value]="m">{{ moduleLabel(m) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="audit-type">Acción</label>
+      <select
+        id="audit-type"
+        name="type"
+        [ngModel]="type()"
+        (ngModelChange)="type.set($event)"
+      >
+        <option value="">Todas</option>
+        @for (t of types(); track t.tipo) {
+          <option [value]="t.tipo">{{ t.accion }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="audit-role">Realizado por</label>
+      <select
+        id="audit-role"
+        name="role"
+        [ngModel]="role()"
+        (ngModelChange)="role.set($event)"
+      >
+        <option value="">Todos los roles</option>
+        @for (r of options()?.roles ?? []; track r) {
+          <option [value]="r">{{ roleLabel(r) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="audit-from">Desde</label>
+      <input
+        id="audit-from"
+        name="from"
+        type="date"
+        [ngModel]="from()"
+        (ngModelChange)="from.set($event)"
+      />
+    </div>
+
+    <div class="field">
+      <label for="audit-to">Hasta</label>
+      <input
+        id="audit-to"
+        name="to"
+        type="date"
+        [ngModel]="to()"
+        (ngModelChange)="to.set($event)"
+      />
+    </div>
+
+    <div class="filter-actions">
+      <button type="submit" class="primary-button" [disabled]="loading()">
+        Buscar
+      </button>
+      <button
+        type="button"
+        class="secondary-button clear-button"
+        [disabled]="loading() || !hasFilters()"
+        (click)="clearFilters()"
+      >
+        Limpiar filtros
+      </button>
+    </div>
+
+  </form>
+
+  <section class="panel">
+
+    <div class="panel-heading">
+      <h2>Eventos</h2>
+      <p>
+        @if (total() > 0) {
+          {{ pageStart() }}–{{ pageEnd() }} de {{ total() }}
+        } @else {
+          0 resultados
+        }
+      </p>
+    </div>
+
+    @if (loading()) {
+      <div class="loading ui-loader">Cargando registro de auditoría...</div>
+    } @else if (events().length === 0) {
+      <div class="empty-state">
+        <h3>Sin eventos</h3>
+        <p>
+          @if (hasFilters()) {
+            Ningún evento coincide con los filtros.
+          } @else {
+            Aún no se han registrado operaciones.
+          }
+        </p>
+      </div>
+    } @else {
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha y hora</th>
+              <th>Acción</th>
+              <th>Realizado por</th>
+              <th>Registro</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of events(); track e.id) {
+              <tr>
+                <td class="nowrap">
+                  {{ e.ocurrido_en | date: 'dd/MM/yyyy' : '-0500' }}
+                  <span class="time">
+                    {{ e.ocurrido_en | date: 'hh:mm a' : '-0500' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="student">
+                    <strong>{{ e.accion }}</strong>
+                    <span>{{ moduleLabel(e.modulo) }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="student">
+                    <strong>{{ e.actor.nombre ?? e.actor.correo ?? 'Desconocido' }}</strong>
+                    <span>{{ roleLabel(e.actor.rol) }}</span>
+                    @if (e.actor.nombre && e.actor.correo) {
+                      <span class="email">{{ e.actor.correo }}</span>
+                    }
+                  </div>
+                </td>
+                <td class="nowrap">
+                  @if (entityLink(e); as link) {
+                    <a class="entity-link" [routerLink]="link">
+                      {{ entityLabel(e) }}
+                    </a>
+                  } @else {
+                    {{ entityLabel(e) }}
+                  }
+                </td>
+                <td>
+                  @let items = details(e);
+                  @if (items.length === 0) {
+                    <span class="muted">—</span>
+                  } @else {
+                    <dl class="detail-list">
+                      @for (item of items; track item.etiqueta) {
+                        <div>
+                          <dt>{{ item.etiqueta }}</dt>
+                          <dd>{{ item.valor }}</dd>
+                        </div>
+                      }
+                    </dl>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (totalPages() > 1) {
+        <div class="pagination">
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="page() <= 1"
+            (click)="previous()"
+          >
+            ← Anterior
+          </button>
+          <span>Página {{ page() }} de {{ totalPages() }}</span>
+          <button
+            type="button"
+            class="secondary-button"
+            [disabled]="page() >= totalPages()"
+            (click)="next()"
+          >
+            Siguiente →
+          </button>
+        </div>
+      }
+    }
+
+  </section>
+
+</section>

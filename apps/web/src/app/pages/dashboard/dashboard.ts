@@ -453,6 +453,12 @@ export class Dashboard {
     ]);
   }
 
+  goToAudit() {
+    this.router.navigate([
+      '/auditoria',
+    ]);
+  }
+
   newUser() {
     this.router.navigate([
       '/usuarios/nuevo',
