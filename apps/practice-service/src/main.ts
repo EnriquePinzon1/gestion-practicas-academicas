@@ -2271,6 +2271,227 @@ app.patch('/api/groups/:id', async (req, res) => {
 });
 
 // ======================================================
+// INTEGRANTES DEL GRUPO (agregar / retirar uno a la vez)
+// Mismas reglas que al crear: estudiante activo y sin otro
+// grupo activo. Retirar no borra su historial: el snapshot
+// de actividad_estudiante se conserva.
+// ======================================================
+
+app.patch('/api/groups/:id/students', async (req, res) => {
+  const idGrupo = Number(req.params.id);
+  const idEstudiante = Number(req.body?.id_estudiante);
+  const action = String(req.body?.action ?? '')
+    .trim()
+    .toUpperCase();
+
+  if (
+    !Number.isInteger(idGrupo) ||
+    idGrupo <= 0 ||
+    !Number.isInteger(idEstudiante) ||
+    idEstudiante <= 0 ||
+    !['ADD', 'REMOVE'].includes(action)
+  ) {
+    return res.status(400).json({
+      message: 'La operación sobre el estudiante no es válida',
+    });
+  }
+
+  try {
+    const group = await pool.query(
+      `
+        SELECT id_grupo, estado
+        FROM practices.grupo
+        WHERE id_grupo = $1
+      `,
+      [idGrupo]
+    );
+
+    if ((group.rowCount ?? 0) === 0) {
+      return res.status(404).json({
+        message: 'Grupo no encontrado',
+      });
+    }
+
+    if (group.rows[0].estado !== 'ACTIVO') {
+      return res.status(409).json({
+        message:
+          'No es posible modificar integrantes de un grupo cerrado',
+      });
+    }
+
+    if (action === 'ADD') {
+      const studentsResponse = await internalFetch(
+        USER_SERVICE_URL + '/api/internal/students/available'
+      );
+
+      if (!studentsResponse.ok) {
+        return res.status(503).json({
+          message: 'User Service no disponible',
+        });
+      }
+
+      const studentsBody: any = await studentsResponse.json();
+
+      const studentExists = (studentsBody.data ?? []).some(
+        (item: any) => Number(item.id_estudiante) === idEstudiante
+      );
+
+      if (!studentExists) {
+        return res.status(400).json({
+          message: 'El estudiante seleccionado no está disponible',
+        });
+      }
+
+      const conflict = await pool.query(
+        `
+          SELECT g.id_grupo
+          FROM practices.grupo_estudiante ge
+          INNER JOIN practices.grupo g
+            ON g.id_grupo = ge.id_grupo
+          WHERE
+            ge.id_estudiante = $1
+            AND g.estado = 'ACTIVO'
+            AND g.id_grupo <> $2
+          LIMIT 1
+        `,
+        [idEstudiante, idGrupo]
+      );
+
+      if ((conflict.rowCount ?? 0) > 0) {
+        return res.status(409).json({
+          message: 'El estudiante ya pertenece a otro grupo activo',
+        });
+      }
+
+      await pool.query(
+        `
+          INSERT INTO practices.grupo_estudiante (
+            id_grupo,
+            id_estudiante
+          )
+          VALUES ($1, $2)
+          ON CONFLICT DO NOTHING
+        `,
+        [idGrupo, idEstudiante]
+      );
+
+      return res.json({
+        data: { id_grupo: idGrupo, id_estudiante: idEstudiante },
+        message: 'Estudiante agregado correctamente',
+      });
+    }
+
+    // REMOVE: el grupo no puede quedar sin integrantes
+    // (al crearlo se exige al menos uno).
+    const removed = await pool.query(
+      `
+        DELETE FROM practices.grupo_estudiante
+        WHERE
+          id_grupo = $1
+          AND id_estudiante = $2
+          AND (
+            SELECT COUNT(*)
+            FROM practices.grupo_estudiante
+            WHERE id_grupo = $1
+          ) > 1
+        RETURNING id_estudiante
+      `,
+      [idGrupo, idEstudiante]
+    );
+
+    if ((removed.rowCount ?? 0) === 0) {
+      const member = await pool.query(
+        `
+          SELECT 1
+          FROM practices.grupo_estudiante
+          WHERE id_grupo = $1 AND id_estudiante = $2
+        `,
+        [idGrupo, idEstudiante]
+      );
+
+      if ((member.rowCount ?? 0) === 0) {
+        return res.status(404).json({
+          message: 'El estudiante no pertenece al grupo',
+        });
+      }
+
+      return res.status(409).json({
+        message: 'El grupo debe conservar al menos un estudiante',
+      });
+    }
+
+    return res.json({
+      data: { id_grupo: idGrupo, id_estudiante: idEstudiante },
+      message: 'Estudiante retirado correctamente',
+    });
+  } catch (error) {
+    console.error('Error modificando integrantes:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible modificar los integrantes del grupo',
+    });
+  }
+});
+
+// Cerrar grupo: ACTIVO → CERRADO (estado final).
+app.patch('/api/groups/:id/status', async (req, res) => {
+  const idGrupo = Number(req.params.id);
+  const estado = String(req.body?.estado ?? '')
+    .trim()
+    .toUpperCase();
+
+  if (!Number.isInteger(idGrupo) || idGrupo <= 0) {
+    return res.status(400).json({
+      message: 'El identificador del grupo no es válido',
+    });
+  }
+
+  if (estado !== 'CERRADO') {
+    return res.status(400).json({
+      message: 'Solo es posible cerrar el grupo',
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        UPDATE practices.grupo
+        SET estado = 'CERRADO'
+        WHERE
+          id_grupo = $1
+          AND estado = 'ACTIVO'
+        RETURNING id_grupo, nombre, estado
+      `,
+      [idGrupo]
+    );
+
+    if ((result.rowCount ?? 0) === 0) {
+      const exists = await pool.query(
+        'SELECT 1 FROM practices.grupo WHERE id_grupo = $1',
+        [idGrupo]
+      );
+
+      return (exists.rowCount ?? 0) === 0
+        ? res.status(404).json({ message: 'Grupo no encontrado' })
+        : res.status(409).json({
+            message: 'El grupo ya se encuentra cerrado',
+          });
+    }
+
+    return res.json({
+      data: result.rows[0],
+      message: 'Grupo cerrado correctamente',
+    });
+  } catch (error) {
+    console.error('Error cerrando grupo:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible cerrar el grupo',
+    });
+  }
+});
+
+// ======================================================
 // INTERNAL - ESTUDIANTES DE UN GRUPO
 // ======================================================
 
