@@ -12,6 +12,17 @@
             {{ tamano(ev.tamano_bytes) }} ·
             {{ ev.subido_en | date: 'dd/MM/yyyy, HH:mm' }}
           </small>
+
+          @if (ev.revisada !== undefined) {
+            <div class="review" [class.done]="ev.revisada">
+              <span class="review-badge">
+                {{ ev.revisada ? '✓ Revisada por el docente' : 'Pendiente de revisión' }}
+              </span>
+              @if (ev.revisada && ev.observacion_revision) {
+                <p>{{ ev.observacion_revision }}</p>
+              }
+            </div>
+          }
         </div>
 
         <div class="buttons">

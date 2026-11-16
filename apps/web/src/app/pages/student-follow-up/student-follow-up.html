@@ -138,6 +138,41 @@
         </div>
       }
     </section>
+
+    <section class="panel visits-panel">
+      <div class="panel-heading">
+        <h2>Visitas del docente asesor</h2>
+        <p>Visitas a la institución donde realizas la práctica.</p>
+      </div>
+
+      @if (p.visitas.length === 0) {
+        <div class="empty-state">
+          <h3>Sin visitas</h3>
+          <p>Aún no hay visitas registradas para esta práctica.</p>
+        </div>
+      } @else {
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Descripción</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (v of p.visitas; track v.id_visita) {
+                <tr>
+                  <td class="nowrap">
+                    {{ v.fecha | date: 'dd/MM/yyyy' : 'UTC' }}
+                  </td>
+                  <td class="observation-cell">{{ v.descripcion }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
   }
 
 </section>

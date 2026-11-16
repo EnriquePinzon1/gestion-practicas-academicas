@@ -1912,18 +1912,25 @@ async function listEvidences(
     return grouped;
   }
 
+  // Incluye la revisión del docente (estado derivado: revisada
+  // si existe la fila en revision_evidencia).
   const result = await pool.query(
     `
       SELECT
-        id_evidencia,
-        id_entrega,
-        nombre_archivo,
-        tipo_mime,
-        tamano_bytes,
-        subido_en
-      FROM activities.evidencia
-      WHERE id_entrega = ANY($1::int[])
-      ORDER BY subido_en ASC
+        ev.id_evidencia,
+        ev.id_entrega,
+        ev.nombre_archivo,
+        ev.tipo_mime,
+        ev.tamano_bytes,
+        ev.subido_en,
+        (rv.id_revision IS NOT NULL) AS revisada,
+        rv.observacion AS observacion_revision,
+        rv.actualizado_en AS revisada_en
+      FROM activities.evidencia ev
+      LEFT JOIN activities.revision_evidencia rv
+        ON rv.id_evidencia = ev.id_evidencia
+      WHERE ev.id_entrega = ANY($1::int[])
+      ORDER BY ev.subido_en ASC
     `,
     [submissionIds],
   );
@@ -2425,6 +2432,208 @@ app.get("/api/activities/:id/evidences/:idEvidencia/url", async (req, res) => {
       `,
     [idEvidencia, idActividad, idDocente],
   );
+});
+
+// ======================================================
+// REVISIÓN DE EVIDENCIAS (CU "Realizar Seguimiento de
+// Prácticas", BS2)
+//
+// El docente de la actividad revisa cada evidencia y puede
+// dejar una observación. Solo con la entrega definitiva
+// (actividad CERRADA o plazo vencido). Estado derivado:
+// Revisada si existe la fila en revision_evidencia.
+// ======================================================
+
+const MAX_OBSERVACION_REVISION = 2000;
+
+// Evidencias de un estudiante en las actividades de un grupo
+// del docente (desde el snapshot: conserva a retirados).
+app.get(
+  '/api/follow-up/groups/:idGrupo/students/:idEstudiante/evidences',
+  async (req, res) => {
+    const idGrupo = positiveInt(req.params.idGrupo);
+    const idEstudiante = positiveInt(req.params.idEstudiante);
+    const idDocente = positiveInt(req.query.teacherId);
+
+    if (!idGrupo || !idEstudiante || !idDocente) {
+      return res.status(400).json({
+        message: 'Grupo, estudiante o docente no válido',
+      });
+    }
+
+    try {
+      const group = await findTeacherGroup(idDocente, idGrupo);
+
+      if (!group) {
+        return res.status(404).json({
+          message: 'Grupo no encontrado',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          SELECT
+            ev.id_evidencia,
+            ev.nombre_archivo,
+            ev.tipo_mime,
+            ev.tamano_bytes,
+            ev.subido_en,
+            a.id_actividad,
+            a.titulo,
+            a.estado AS estado_actividad,
+            en.entregado_en,
+            (
+              a.estado <> 'ABIERTA'
+              OR (
+                (a.fecha_limite + a.hora_limite)
+                AT TIME ZONE 'America/Bogota'
+              ) <= NOW()
+            ) AS puede_revisar,
+            (rv.id_revision IS NOT NULL) AS revisada,
+            rv.observacion AS observacion_revision,
+            rv.actualizado_en AS revisada_en
+          FROM activities.actividad a
+          INNER JOIN activities.actividad_estudiante ae
+            ON ae.id_actividad = a.id_actividad
+           AND ae.id_estudiante = $2
+          INNER JOIN activities.entrega en
+            ON en.id_actividad_estudiante =
+               ae.id_actividad_estudiante
+          INNER JOIN activities.evidencia ev
+            ON ev.id_entrega = en.id_entrega
+          LEFT JOIN activities.revision_evidencia rv
+            ON rv.id_evidencia = ev.id_evidencia
+          WHERE a.id_grupo = $1
+          ORDER BY
+            a.fecha_limite,
+            a.hora_limite,
+            a.id_actividad,
+            ev.subido_en
+        `,
+        [idGrupo, idEstudiante]
+      );
+
+      const revisadas = result.rows.filter((r) => r.revisada).length;
+
+      return res.json({
+        data: result.rows,
+        resumen: {
+          total: result.rows.length,
+          revisadas,
+          pendientes: result.rows.length - revisadas,
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Error consultando evidencias del estudiante:',
+        error
+      );
+
+      return res.status(500).json({
+        message: 'No fue posible consultar las evidencias',
+      });
+    }
+  }
+);
+
+// Finalizar (201) o corregir (200) la revisión de una evidencia.
+app.put('/api/evidences/:idEvidencia/review', async (req, res) => {
+  const idEvidencia = positiveInt(req.params.idEvidencia);
+  const idDocente = positiveInt(req.query.teacherId);
+
+  if (!idEvidencia || !idDocente) {
+    return res.status(400).json({
+      message: 'La evidencia indicada no es válida',
+    });
+  }
+
+  const observacion =
+    typeof req.body?.observacion === 'string'
+      ? req.body.observacion.trim()
+      : '';
+
+  if (observacion.length > MAX_OBSERVACION_REVISION) {
+    return res.status(400).json({
+      message: `La observación no puede superar ${MAX_OBSERVACION_REVISION} caracteres`,
+    });
+  }
+
+  try {
+    const evidence = await pool.query(
+      `
+        SELECT
+          ev.id_evidencia,
+          (
+            a.estado <> 'ABIERTA'
+            OR (
+              (a.fecha_limite + a.hora_limite)
+              AT TIME ZONE 'America/Bogota'
+            ) <= NOW()
+          ) AS puede_revisar
+        FROM activities.evidencia ev
+        INNER JOIN activities.entrega en
+          ON en.id_entrega = ev.id_entrega
+        INNER JOIN activities.actividad_estudiante ae
+          ON ae.id_actividad_estudiante =
+             en.id_actividad_estudiante
+        INNER JOIN activities.actividad a
+          ON a.id_actividad = ae.id_actividad
+        WHERE ev.id_evidencia = $1
+          AND a.id_docente = $2
+      `,
+      [idEvidencia, idDocente]
+    );
+
+    if ((evidence.rowCount ?? 0) === 0) {
+      return res.status(404).json({
+        message: 'Evidencia no encontrada',
+      });
+    }
+
+    if (!evidence.rows[0].puede_revisar) {
+      return res.status(409).json({
+        message:
+          'Las evidencias se revisan cuando la entrega es definitiva (actividad cerrada o plazo vencido)',
+      });
+    }
+
+    const result = await pool.query(
+      `
+        INSERT INTO activities.revision_evidencia (
+          id_evidencia,
+          id_docente,
+          observacion
+        )
+        VALUES ($1, $2, $3)
+        ON CONFLICT (id_evidencia) DO UPDATE
+        SET
+          id_docente = EXCLUDED.id_docente,
+          observacion = EXCLUDED.observacion,
+          actualizado_en = NOW()
+        RETURNING
+          id_evidencia,
+          observacion AS observacion_revision,
+          actualizado_en AS revisada_en,
+          (xmax = 0) AS creada
+      `,
+      [idEvidencia, idDocente, observacion || null]
+    );
+
+    const { creada, ...revision } = result.rows[0];
+
+    return res.status(creada ? 201 : 200).json({
+      message: creada
+        ? 'Revisión de la evidencia registrada correctamente'
+        : 'Revisión de la evidencia actualizada correctamente',
+      data: { ...revision, revisada: true },
+    });
+  } catch (error) {
+    console.error('Error registrando revisión de evidencia:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible registrar la revisión de la evidencia',
+    });
+  }
 });
 
 // ======================================================

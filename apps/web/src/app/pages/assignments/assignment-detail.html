@@ -147,5 +147,10 @@
       class="tutor-record"
       [endpoint]="'/practice-assignments/' + a.id_asignacion + '/tutor-record'"
     />
+
+    <app-assignment-visits-view
+      class="tutor-record"
+      [idAsignacion]="a.id_asignacion"
+    />
   }
 </div>

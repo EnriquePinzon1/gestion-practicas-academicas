@@ -4249,11 +4249,22 @@ app.get(
 
         // El estudiante solo consulta: sin permisos de edición
         // ni identificadores internos de quién registró.
+        // Visitas del docente: solo fecha y descripción (las
+        // observaciones son internas del docente).
+        const visitas = (await listVisits(row.id_asignacion)).map(
+          (visita) => ({
+            id_visita: visita.id_visita,
+            fecha: visita.fecha,
+            descripcion: visita.descripcion,
+          })
+        );
+
         data.push({
           ...hoursSummary(row),
           registros: detail.registros.map(
             ({ registrado_por, ...registro }) => registro
           ),
+          visitas,
         });
       }
 
@@ -4267,6 +4278,474 @@ app.get(
     }
   }
 );
+
+// ========================================================
+// VISITAS DEL DOCENTE ASESOR (CU "Realizar Seguimiento de
+// Prácticas", BS3)
+//
+// La visita es a la institución donde el estudiante hace la
+// práctica: se asocia a la ASIGNACIÓN, enlazada al grupo del
+// docente por misma práctica + período (la no cancelada más
+// reciente, igual que el registro del tutor).
+// - Registrar/corregir: docente del grupo, estudiante en el
+//   grupo, asignación EN_CURSO; fecha entre el inicio y hoy.
+// - Solo corrige las propias; no hay borrado (historial).
+// - El estudiante solo ve fecha y descripción.
+// ========================================================
+
+const MAX_TEXTO_VISITA = 2000;
+
+// $1 = id_estudiante, $2 = id_practica, $3 = periodo
+const VISIT_ASSIGNMENT_SQL = `
+  SELECT
+    a.id_asignacion,
+    a.id_estudiante,
+    a.estado,
+    a.periodo_academico,
+    p.nombre AS practica,
+    i.nombre AS institucion,
+    to_char(a.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+    to_char(a.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
+    to_char(
+      LEAST(
+        COALESCE(
+          a.fecha_inicio,
+          (a.creado_en AT TIME ZONE 'America/Bogota')::date
+        ),
+        (NOW() AT TIME ZONE 'America/Bogota')::date
+      ),
+      'YYYY-MM-DD'
+    ) AS fecha_minima,
+    to_char(
+      (NOW() AT TIME ZONE 'America/Bogota')::date,
+      'YYYY-MM-DD'
+    ) AS hoy
+  FROM practices.asignacion_practica a
+  INNER JOIN practices.practica p
+    ON p.id_practica = a.id_practica
+  INNER JOIN practices.institucion i
+    ON i.id_institucion = a.id_institucion
+`;
+
+function mapVisit(row: any, idDocente: number | null) {
+  return {
+    id_visita: row.id_visita,
+    id_docente: row.id_docente,
+    fecha: row.fecha,
+    descripcion: row.descripcion,
+    observaciones: row.observaciones,
+    creado_en: row.creado_en,
+    actualizado_en: row.actualizado_en,
+    editada:
+      new Date(row.actualizado_en).getTime() -
+        new Date(row.creado_en).getTime() >
+      1000,
+    propia: idDocente !== null && Number(row.id_docente) === idDocente,
+  };
+}
+
+async function listVisits(idAsignacion: number) {
+  const result = await pool.query(
+    `
+      SELECT
+        id_visita,
+        id_docente,
+        to_char(fecha, 'YYYY-MM-DD') AS fecha,
+        descripcion,
+        observaciones,
+        creado_en,
+        actualizado_en
+      FROM practices.visita_docente
+      WHERE id_asignacion = $1
+      ORDER BY fecha DESC, id_visita DESC
+    `,
+    [idAsignacion]
+  );
+
+  return result.rows;
+}
+
+// Grupo del docente + pertenencia actual del estudiante +
+// asignación enlazada (o null). null si el grupo no es suyo.
+async function findVisitContext(
+  idDocente: number,
+  idGrupo: number,
+  idEstudiante: number
+) {
+  const group = await pool.query(
+    `
+      SELECT
+        g.id_practica,
+        g.periodo_academico,
+        EXISTS (
+          SELECT 1
+          FROM practices.grupo_estudiante ge
+          WHERE ge.id_grupo = g.id_grupo
+            AND ge.id_estudiante = $3
+        ) AS en_grupo
+      FROM practices.grupo g
+      WHERE g.id_grupo = $1
+        AND g.id_docente = $2
+    `,
+    [idGrupo, idDocente, idEstudiante]
+  );
+
+  if ((group.rowCount ?? 0) === 0) {
+    return null;
+  }
+
+  const { id_practica, periodo_academico, en_grupo } = group.rows[0];
+
+  const assignment = await pool.query(
+    `${VISIT_ASSIGNMENT_SQL}
+     WHERE a.id_estudiante = $1
+       AND a.id_practica = $2
+       AND a.periodo_academico = $3
+     ORDER BY
+       (a.estado <> 'CANCELADA') DESC,
+       a.id_asignacion DESC
+     LIMIT 1`,
+    [idEstudiante, id_practica, periodo_academico]
+  );
+
+  return {
+    enGrupo: Boolean(en_grupo),
+    assignment: assignment.rows[0] ?? null,
+  };
+}
+
+function visitAssignmentInfo(row: any) {
+  return {
+    id_asignacion: row.id_asignacion,
+    estado: row.estado,
+    practica: row.practica,
+    institucion: row.institucion,
+    periodo_academico: row.periodo_academico,
+    fecha_inicio: row.fecha_inicio,
+    fecha_fin: row.fecha_fin,
+  };
+}
+
+// Motivo por el que no se pueden registrar visitas (o null).
+function visitBlockReason(context: {
+  enGrupo: boolean;
+  assignment: any;
+}): string | null {
+  if (!context.assignment) {
+    return 'El estudiante no tiene una asignación de práctica para este período';
+  }
+
+  if (!context.enGrupo) {
+    return 'El estudiante ya no pertenece al grupo';
+  }
+
+  if (context.assignment.estado !== 'EN_CURSO') {
+    return 'Solo se registran visitas con la práctica en curso';
+  }
+
+  return null;
+}
+
+function validateVisit(
+  body: any,
+  assignment: any
+):
+  | { error: string }
+  | { fecha: string; descripcion: string; observaciones: string | null } {
+  const fecha =
+    typeof body?.fecha === 'string' ? body.fecha.trim() : '';
+
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(fecha) ||
+    Number.isNaN(Date.parse(fecha + 'T00:00:00Z')) ||
+    new Date(fecha + 'T00:00:00Z').toISOString().slice(0, 10) !==
+      fecha
+  ) {
+    return { error: 'La fecha de la visita no es válida' };
+  }
+
+  if (fecha > assignment.hoy) {
+    return { error: 'La fecha de la visita no puede ser futura' };
+  }
+
+  if (fecha < assignment.fecha_minima) {
+    return {
+      error:
+        'La fecha de la visita no puede ser anterior al inicio de la práctica',
+    };
+  }
+
+  const descripcion =
+    typeof body?.descripcion === 'string' ? body.descripcion.trim() : '';
+
+  if (!descripcion) {
+    return { error: 'La descripción de la visita es obligatoria' };
+  }
+
+  if (descripcion.length > MAX_TEXTO_VISITA) {
+    return {
+      error: `La descripción no puede superar ${MAX_TEXTO_VISITA} caracteres`,
+    };
+  }
+
+  const observaciones =
+    typeof body?.observaciones === 'string'
+      ? body.observaciones.trim()
+      : '';
+
+  if (observaciones.length > MAX_TEXTO_VISITA) {
+    return {
+      error: `Las observaciones no pueden superar ${MAX_TEXTO_VISITA} caracteres`,
+    };
+  }
+
+  return { fecha, descripcion, observaciones: observaciones || null };
+}
+
+function parseVisitParams(req: express.Request) {
+  return {
+    idDocente: parsePositiveId(req.params.idDocente),
+    idGrupo: parsePositiveId(req.params.idGrupo),
+    idEstudiante: parsePositiveId(req.params.idEstudiante),
+  };
+}
+
+const TEACHER_VISITS_PATH =
+  '/api/internal/teachers/:idDocente/groups/:idGrupo/students/:idEstudiante/visits';
+
+// Docente: historial de visitas del estudiante del grupo.
+app.get(TEACHER_VISITS_PATH, async (req, res) => {
+  const { idDocente, idGrupo, idEstudiante } = parseVisitParams(req);
+
+  if (!idDocente || !idGrupo || !idEstudiante) {
+    return res.status(400).json({
+      message: 'Docente, grupo o estudiante no válidos',
+    });
+  }
+
+  try {
+    const context = await findVisitContext(idDocente, idGrupo, idEstudiante);
+
+    if (!context) {
+      return res.status(404).json({ message: 'Grupo no encontrado' });
+    }
+
+    const { assignment } = context;
+    const motivo = visitBlockReason(context);
+
+    return res.json({
+      data: {
+        asignacion: assignment ? visitAssignmentInfo(assignment) : null,
+        en_grupo: context.enGrupo,
+        puede_registrar: motivo === null,
+        motivo_bloqueo: motivo,
+        fecha_minima: assignment?.fecha_minima ?? null,
+        fecha_maxima: assignment?.hoy ?? null,
+        visitas: assignment
+          ? (await listVisits(assignment.id_asignacion)).map((row) =>
+              mapVisit(row, idDocente)
+            )
+          : [],
+      },
+    });
+  } catch (error) {
+    console.error('Error consultando visitas del docente:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las visitas',
+    });
+  }
+});
+
+// Docente: registrar una visita.
+app.post(TEACHER_VISITS_PATH, async (req, res) => {
+  const { idDocente, idGrupo, idEstudiante } = parseVisitParams(req);
+
+  if (!idDocente || !idGrupo || !idEstudiante) {
+    return res.status(400).json({
+      message: 'Docente, grupo o estudiante no válidos',
+    });
+  }
+
+  try {
+    const context = await findVisitContext(idDocente, idGrupo, idEstudiante);
+
+    if (!context) {
+      return res.status(404).json({ message: 'Grupo no encontrado' });
+    }
+
+    const motivo = visitBlockReason(context);
+
+    if (motivo) {
+      return res.status(409).json({ message: motivo });
+    }
+
+    const valid = validateVisit(req.body, context.assignment);
+
+    if ('error' in valid) {
+      return res.status(400).json({ message: valid.error });
+    }
+
+    const result = await pool.query(
+      `
+        INSERT INTO practices.visita_docente (
+          id_asignacion,
+          id_docente,
+          fecha,
+          descripcion,
+          observaciones
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING
+          id_visita,
+          id_docente,
+          to_char(fecha, 'YYYY-MM-DD') AS fecha,
+          descripcion,
+          observaciones,
+          creado_en,
+          actualizado_en
+      `,
+      [
+        context.assignment.id_asignacion,
+        idDocente,
+        valid.fecha,
+        valid.descripcion,
+        valid.observaciones,
+      ]
+    );
+
+    return res.status(201).json({
+      message: 'Visita registrada correctamente',
+      data: mapVisit(result.rows[0], idDocente),
+    });
+  } catch (error) {
+    console.error('Error registrando visita:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible registrar la visita',
+    });
+  }
+});
+
+// Docente: corregir una visita propia.
+app.put(TEACHER_VISITS_PATH + '/:idVisita', async (req, res) => {
+  const { idDocente, idGrupo, idEstudiante } = parseVisitParams(req);
+  const idVisita = parsePositiveId(req.params.idVisita);
+
+  if (!idDocente || !idGrupo || !idEstudiante || !idVisita) {
+    return res.status(400).json({
+      message: 'Visita no válida',
+    });
+  }
+
+  try {
+    const context = await findVisitContext(idDocente, idGrupo, idEstudiante);
+
+    if (!context) {
+      return res.status(404).json({ message: 'Grupo no encontrado' });
+    }
+
+    const visit = context.assignment
+      ? await pool.query(
+          `
+            SELECT id_docente
+            FROM practices.visita_docente
+            WHERE id_visita = $1
+              AND id_asignacion = $2
+          `,
+          [idVisita, context.assignment.id_asignacion]
+        )
+      : null;
+
+    if (!visit || (visit.rowCount ?? 0) === 0) {
+      return res.status(404).json({ message: 'Visita no encontrada' });
+    }
+
+    if (Number(visit.rows[0].id_docente) !== idDocente) {
+      return res.status(403).json({
+        message: 'Solo puede corregir las visitas que usted registró',
+      });
+    }
+
+    const motivo = visitBlockReason(context);
+
+    if (motivo) {
+      return res.status(409).json({ message: motivo });
+    }
+
+    const valid = validateVisit(req.body, context.assignment);
+
+    if ('error' in valid) {
+      return res.status(400).json({ message: valid.error });
+    }
+
+    const result = await pool.query(
+      `
+        UPDATE practices.visita_docente
+        SET
+          fecha = $2,
+          descripcion = $3,
+          observaciones = $4,
+          actualizado_en = NOW()
+        WHERE id_visita = $1
+        RETURNING
+          id_visita,
+          id_docente,
+          to_char(fecha, 'YYYY-MM-DD') AS fecha,
+          descripcion,
+          observaciones,
+          creado_en,
+          actualizado_en
+      `,
+      [idVisita, valid.fecha, valid.descripcion, valid.observaciones]
+    );
+
+    return res.json({
+      message: 'Visita actualizada correctamente',
+      data: mapVisit(result.rows[0], idDocente),
+    });
+  } catch (error) {
+    console.error('Error actualizando visita:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible actualizar la visita',
+    });
+  }
+});
+
+// Coordinador: visitas de una asignación (solo lectura).
+app.get('/api/practice-assignments/:id/visits', async (req, res) => {
+  const idAsignacion = parsePositiveId(req.params.id);
+
+  if (!idAsignacion) {
+    return res.status(400).json({
+      message: 'El identificador de la asignación no es válido',
+    });
+  }
+
+  try {
+    const exists = await pool.query(
+      `SELECT 1 FROM practices.asignacion_practica WHERE id_asignacion = $1`,
+      [idAsignacion]
+    );
+
+    if ((exists.rowCount ?? 0) === 0) {
+      return res.status(404).json({ message: 'Asignación no encontrada' });
+    }
+
+    return res.json({
+      data: (await listVisits(idAsignacion)).map((row) =>
+        mapVisit(row, null)
+      ),
+    });
+  } catch (error) {
+    console.error('Error consultando visitas de la asignación:', error);
+
+    return res.status(500).json({
+      message: 'No fue posible consultar las visitas',
+    });
+  }
+});
 
 const port = process.env.PORT || 3335;
 

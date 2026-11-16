@@ -2183,6 +2183,124 @@ app.get(
 );
 
 // ========================================================
+// DOCENTE - REVISIÓN DE EVIDENCIAS Y VISITAS (CU7, bloque 2)
+// El docente sale del token; los servicios validan que el
+// grupo / la actividad sean suyos (ajeno → 404).
+// ========================================================
+
+function teacherStudentPath(req: Request, _res: Response): string {
+  return (
+    '/groups/' +
+    encodeURIComponent(String(req.params.idGrupo)) +
+    '/students/' +
+    encodeURIComponent(String(req.params.idEstudiante))
+  );
+}
+
+app.get(
+  '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante/evidences',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/follow-up' +
+        teacherStudentPath(req, res) +
+        '/evidences?teacherId=' +
+        res.locals.teacher.id_docente,
+      { method: 'GET' },
+      'Error consultando evidencias del estudiante:'
+    )
+);
+
+app.put(
+  '/api/teacher/evidences/:idEvidencia/review',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToActivityService(
+      res,
+      '/api/evidences/' +
+        encodeURIComponent(String(req.params.idEvidencia)) +
+        '/review?teacherId=' +
+        res.locals.teacher.id_docente,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          observacion: req.body?.observacion,
+        }),
+      },
+      'Error registrando revisión de evidencia:'
+    )
+);
+
+app.get(
+  '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante/visits',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/internal/teachers/' +
+        res.locals.teacher.id_docente +
+        teacherStudentPath(req, res) +
+        '/visits',
+      { method: 'GET' },
+      'Error consultando visitas:'
+    )
+);
+
+function visitBody(req: Request): RequestInit['body'] {
+  return JSON.stringify({
+    fecha: req.body?.fecha,
+    descripcion: req.body?.descripcion,
+    observaciones: req.body?.observaciones,
+  });
+}
+
+app.post(
+  '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante/visits',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/internal/teachers/' +
+        res.locals.teacher.id_docente +
+        teacherStudentPath(req, res) +
+        '/visits',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: visitBody(req),
+      },
+      'Error registrando visita:'
+    )
+);
+
+app.put(
+  '/api/teacher/follow-up/groups/:idGrupo/students/:idEstudiante/visits/:idVisita',
+  requireAuth,
+  requireTeacher,
+  (req, res) =>
+    forwardToPracticeService(
+      res,
+      '/api/internal/teachers/' +
+        res.locals.teacher.id_docente +
+        teacherStudentPath(req, res) +
+        '/visits/' +
+        encodeURIComponent(String(req.params.idVisita)),
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: visitBody(req),
+      },
+      'Error actualizando visita:'
+    )
+);
+
+// ========================================================
 // TUTOR RECEPTOR - PRACTICANTES A CARGO
 // Solo asignaciones donde el tutor del token figura como
 // tutor. El seguimiento académico es de solo lectura.
@@ -2426,6 +2544,51 @@ app.get(
       { method: 'GET' },
       'Error consultando registro del tutor:'
     )
+);
+
+// Coordinador: visitas del docente a una asignación (solo
+// lectura), con el nombre del docente si está activo.
+app.get(
+  '/api/practice-assignments/:id/visits',
+  requireAuth,
+  requireCoordinator,
+  async (req, res) => {
+    try {
+      const response = await internalFetch(
+        PRACTICE_SERVICE_URL +
+          '/api/practice-assignments/' +
+          encodeURIComponent(String(req.params.id)) +
+          '/visits'
+      );
+
+      const body = await response.json();
+
+      if (!response.ok || !Array.isArray(body.data) || body.data.length === 0) {
+        return res.status(response.status).json(body);
+      }
+
+      const teachers = await fetchInternalData<any[]>(
+        USER_SERVICE_URL + '/api/internal/teachers/available'
+      );
+
+      const teacherById = new Map(
+        (teachers ?? []).map((row) => [Number(row.id_docente), row])
+      );
+
+      return res.json({
+        data: body.data.map((visit: any) => ({
+          ...visit,
+          docente: personName(teacherById.get(Number(visit.id_docente))),
+        })),
+      });
+    } catch (error) {
+      console.error('Error consultando visitas de la asignación:', error);
+
+      return res.status(503).json({
+        message: 'Practice Service no disponible',
+      });
+    }
+  }
 );
 
 // ========================================================

@@ -1,3 +1,5 @@
+import { StudentVisit } from '../follow-up/teacher-review.model';
+
 import { EstadoAsignacion } from
   '../assignments/assignment.model';
 
@@ -63,6 +65,8 @@ export interface CoordinatorHoursDetail extends CoordinatorHours {
 // Mi Seguimiento (Estudiante).
 export interface StudentHours extends HoursSummary {
   registros: HoursRecord[];
+  // Visitas del docente asesor: solo fecha y descripción
+  visitas: StudentVisit[];
 }
 
 export const MAX_OBSERVACION_HORAS = 2000;

@@ -11,6 +11,11 @@ export interface Evidencia {
   tipo_mime: string;
   tamano_bytes: number;
   subido_en: string;
+  // Revisión del docente (CU7). Estado derivado: revisada
+  // si el docente finalizó la revisión.
+  revisada?: boolean;
+  observacion_revision?: string | null;
+  revisada_en?: string | null;
 }
 
 export const MAX_EVIDENCIAS = 5;

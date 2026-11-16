@@ -11,6 +11,8 @@ import {
 
 import { FollowUpTimeline } from './follow-up-timeline';
 import { TutorRecordView } from '../tutor/tutor-record-view';
+import { TeacherEvidenceReview } from './teacher-evidence-review';
+import { TeacherVisits } from './teacher-visits';
 
 // Historial de seguimiento de un estudiante en un grupo:
 // todas las actividades que recibió (snapshot), con su
@@ -19,7 +21,12 @@ import { TutorRecordView } from '../tutor/tutor-record-view';
 @Component({
   selector: 'app-follow-up-student',
   standalone: true,
-  imports: [FollowUpTimeline, TutorRecordView],
+  imports: [
+    FollowUpTimeline,
+    TutorRecordView,
+    TeacherEvidenceReview,
+    TeacherVisits,
+  ],
   templateUrl: './follow-up-student.html',
   styleUrls: [
     './follow-up.scss',
@@ -34,8 +41,8 @@ export class FollowUpStudent {
 
   readonly studentName = studentName;
 
-  private readonly idGrupo: number;
-  private readonly idEstudiante: number;
+  readonly idGrupo: number;
+  readonly idEstudiante: number;
 
   constructor(
     private readonly api: ApiService,
