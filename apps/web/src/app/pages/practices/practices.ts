@@ -1,5 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
@@ -10,9 +14,6 @@ interface Practica {
   descripcion: string;
   id_programa: number;
   programa: string;
-  id_institucion: number;
-  institucion: string;
-  periodo_academico: string;
   horas_requeridas: number;
   estado: string;
 }
@@ -22,30 +23,25 @@ interface Programa {
   nombre: string;
 }
 
-interface Institucion {
-  id_institucion: number;
-  nombre: string;
-}
-
 @Component({
   selector: 'app-practices',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+  ],
   templateUrl: './practices.html',
   styleUrl: './practices.scss',
 })
 export class Practices {
   practicas = signal<Practica[]>([]);
   programas = signal<Programa[]>([]);
-  instituciones = signal<Institucion[]>([]);
 
   loading = signal(false);
   errorMessage = signal('');
 
   search = signal('');
   programFilter = signal('');
-  institutionFilter = signal('');
-  periodFilter = signal('');
   statusFilter = signal('');
 
   constructor(
@@ -56,42 +52,42 @@ export class Practices {
   }
 
   filteredPractices = computed(() => {
-    const search = this.search().trim().toLowerCase();
-    const program = this.programFilter();
-    const institution = this.institutionFilter();
-    const period = this.periodFilter().trim().toLowerCase();
-    const status = this.statusFilter();
+    const search =
+      this.search().trim().toLowerCase();
 
-    return this.practicas().filter((practica) => {
-      const matchesSearch =
-        !search ||
-        practica.nombre.toLowerCase().includes(search) ||
-        practica.descripcion.toLowerCase().includes(search);
+    const program =
+      this.programFilter();
 
-      const matchesProgram =
-        !program ||
-        practica.id_programa === Number(program);
+    const status =
+      this.statusFilter();
 
-      const matchesInstitution =
-        !institution ||
-        practica.id_institucion === Number(institution);
+    return this.practicas().filter(
+      (practica) => {
+        const matchesSearch =
+          !search ||
+          practica.nombre
+            .toLowerCase()
+            .includes(search) ||
+          practica.descripcion
+            .toLowerCase()
+            .includes(search);
 
-      const matchesPeriod =
-        !period ||
-        practica.periodo_academico.toLowerCase().includes(period);
+        const matchesProgram =
+          !program ||
+          practica.id_programa ===
+            Number(program);
 
-      const matchesStatus =
-        !status ||
-        practica.estado === status;
+        const matchesStatus =
+          !status ||
+          practica.estado === status;
 
-      return (
-        matchesSearch &&
-        matchesProgram &&
-        matchesInstitution &&
-        matchesPeriod &&
-        matchesStatus
-      );
-    });
+        return (
+          matchesSearch &&
+          matchesProgram &&
+          matchesStatus
+        );
+      }
+    );
   });
 
   async loadData() {
@@ -99,16 +95,26 @@ export class Practices {
     this.errorMessage.set('');
 
     try {
-      const [practicesResponse, programsResponse, institutionsResponse] =
-        await Promise.all([
-          this.api.get<{ data: Practica[] }>('/practices'),
-          this.api.get<{ data: Programa[] }>('/programs'),
-          this.api.get<{ data: Institucion[] }>('/institutions'),
-        ]);
+      const [
+        practicesResponse,
+        programsResponse,
+      ] = await Promise.all([
+        this.api.get<{
+          data: Practica[];
+        }>('/practices'),
 
-      this.practicas.set(practicesResponse.data);
-      this.programas.set(programsResponse.data);
-      this.instituciones.set(institutionsResponse.data);
+        this.api.get<{
+          data: Programa[];
+        }>('/programs'),
+      ]);
+
+      this.practicas.set(
+        practicesResponse.data
+      );
+
+      this.programas.set(
+        programsResponse.data
+      );
     } catch (error) {
       this.errorMessage.set(
         error instanceof Error
@@ -123,23 +129,27 @@ export class Practices {
   clearFilters() {
     this.search.set('');
     this.programFilter.set('');
-    this.institutionFilter.set('');
-    this.periodFilter.set('');
     this.statusFilter.set('');
   }
 
   newPractice() {
-    this.router.navigate(['/practicas/nueva']);
+    this.router.navigate([
+      '/practicas/nueva',
+    ]);
   }
 
-  viewPractice(practica: Practica) {
+  viewPractice(
+    practica: Practica
+  ) {
     this.router.navigate([
       '/practicas',
       practica.id_practica,
     ]);
   }
 
-  editPractice(practica: Practica) {
+  editPractice(
+    practica: Practica
+  ) {
     this.router.navigate([
       '/practicas',
       practica.id_practica,
@@ -147,12 +157,15 @@ export class Practices {
     ]);
   }
 
-  async closePractice(practica: Practica) {
-    const confirmed = window.confirm(
-      '¿Está seguro de que desea cerrar la práctica "' +
-        practica.nombre +
-        '"? Esta acción conservará su información histórica.'
-    );
+  async closePractice(
+    practica: Practica
+  ) {
+    const confirmed =
+      window.confirm(
+        '¿Está seguro de que desea cerrar la práctica "' +
+          practica.nombre +
+          '"? Esta acción conservará su información histórica.'
+      );
 
     if (!confirmed) {
       return;
@@ -162,7 +175,9 @@ export class Practices {
 
     try {
       await this.api.patch(
-        '/practices/' + practica.id_practica + '/status',
+        '/practices/' +
+          practica.id_practica +
+          '/status',
         {
           estado: 'CERRADA',
         }

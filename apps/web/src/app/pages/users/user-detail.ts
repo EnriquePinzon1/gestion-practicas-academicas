@@ -16,6 +16,9 @@ interface UsuarioDetalle {
   codigo_estudiante: string | null;
   semestre: number | null;
   id_programa: number | null;
+
+  id_tutor: number | null;
+  cargo: string | null;
 }
 
 interface Programa {

@@ -1,0 +1,39 @@
+// Visitas del Docente Asesor (CU7, BS3).
+// Base visual: follow-up.scss y tutor-observations.scss.
+
+.visit-place {
+  margin: 0 0 16px;
+  color: #475569;
+  overflow-wrap: anywhere;
+
+  strong {
+    color: #10233f;
+  }
+}
+
+.counter {
+  justify-self: end;
+  color: #94a3b8;
+}
+
+.observation-list p.internal-note {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 14px;
+
+  span {
+    font-weight: 600;
+  }
+}
+
+.secondary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+:host {
+  display: block;
+  margin-top: 24px;
+}

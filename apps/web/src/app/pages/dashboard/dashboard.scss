@@ -28,7 +28,7 @@
 
   color: #1f6fb2;
 
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 
   text-transform: uppercase;
@@ -48,7 +48,7 @@
   margin: 0;
 
   color: #6b7280;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .coordinator-badge {
@@ -87,19 +87,19 @@
 
 .coordinator-badge strong {
   color: #1f2937;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .coordinator-badge small {
   margin-top: 3px;
 
   color: #8793a1;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 18px;
 
   margin-bottom: 28px;
@@ -131,8 +131,8 @@
 }
 
 .metric-icon {
-  width: 46px;
-  height: 46px;
+  width: 54px;
+  height: 54px;
 
   display: grid;
   place-items: center;
@@ -142,7 +142,7 @@
   border-radius: 10px;
 
   font-weight: 800;
-  font-size: 21px;
+  font-size: 25px;
 }
 
 .metric-icon.students {
@@ -171,13 +171,13 @@
   margin-bottom: 5px;
 
   color: #6b7280;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .metric-card strong {
   color: #172033;
 
-  font-size: 24px;
+  font-size: 30px;
   line-height: 1;
 }
 
@@ -202,12 +202,12 @@
   margin: 0;
 
   color: #8793a1;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 14px;
 }
 
@@ -257,19 +257,19 @@
 
 .quick-actions strong {
   color: #253045;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .quick-actions small {
   margin-top: 3px;
 
   color: #8793a1;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 20px;
 }
 
@@ -302,7 +302,7 @@
 
   cursor: pointer;
 
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -312,6 +312,7 @@
 
 .list-item {
   width: 100%;
+  box-sizing: border-box;
 
   display: flex;
   align-items: center;
@@ -346,12 +347,12 @@
   margin-bottom: 4px;
 
   color: #253045;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .list-item > div > span {
   color: #8793a1;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .state {
@@ -364,7 +365,7 @@
   background: #dcfce7;
   color: #166534;
 
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -378,7 +379,7 @@
   padding: 24px;
 
   color: #8793a1;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .alert {

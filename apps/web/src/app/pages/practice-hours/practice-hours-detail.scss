@@ -1,0 +1,50 @@
+// Registro de horas (detalle): complementa follow-up.scss,
+// tutor.scss y tutor-observations.scss.
+
+.page-header .status {
+  margin-top: 8px;
+}
+
+.hours-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 200px));
+  gap: 16px;
+}
+
+.hours-form .alert {
+  margin-bottom: 4px;
+}
+
+.observation-cell {
+  min-width: 220px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.record-meta {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 14px;
+
+  .link-button {
+    margin-left: 0;
+  }
+}
+
+.link-button.danger {
+  color: #b91c1c;
+}
+
+.editing-row td {
+  background: #fffbeb;
+}
+
+@media (max-width: 700px) {
+  .hours-form-row {
+    grid-template-columns: 1fr;
+  }
+}

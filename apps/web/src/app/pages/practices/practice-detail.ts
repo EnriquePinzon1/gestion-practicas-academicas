@@ -1,6 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import {
+  Component,
+  OnInit,
+  signal,
+} from '@angular/core';
+import {
+  ActivatedRoute,
+  Router,
+} from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 
 interface PracticaDetalle {
@@ -9,9 +16,6 @@ interface PracticaDetalle {
   descripcion: string;
   id_programa: number;
   programa: string;
-  id_institucion: number;
-  institucion: string;
-  periodo_academico: string;
   horas_requeridas: number;
   estado: string;
 }
@@ -23,8 +27,13 @@ interface PracticaDetalle {
   templateUrl: './practice-detail.html',
   styleUrl: './practice-detail.scss',
 })
-export class PracticeDetail implements OnInit {
-  practica = signal<PracticaDetalle | null>(null);
+export class PracticeDetail
+  implements OnInit
+{
+  practica =
+    signal<PracticaDetalle | null>(
+      null
+    );
 
   loading = signal(false);
   errorMessage = signal('');
@@ -41,11 +50,15 @@ export class PracticeDetail implements OnInit {
 
   async loadPractice() {
     const id = Number(
-      this.route.snapshot.paramMap.get('id')
+      this.route.snapshot.paramMap.get(
+        'id'
+      )
     );
 
     if (!id) {
-      this.errorMessage.set('Práctica no válida.');
+      this.errorMessage.set(
+        'Práctica no válida.'
+      );
       return;
     }
 
@@ -53,11 +66,14 @@ export class PracticeDetail implements OnInit {
     this.errorMessage.set('');
 
     try {
-      const response = await this.api.get<{
-        data: PracticaDetalle;
-      }>('/practices/' + id);
+      const response =
+        await this.api.get<{
+          data: PracticaDetalle;
+        }>('/practices/' + id);
 
-      this.practica.set(response.data);
+      this.practica.set(
+        response.data
+      );
     } catch (error) {
       this.errorMessage.set(
         error instanceof Error
@@ -70,7 +86,8 @@ export class PracticeDetail implements OnInit {
   }
 
   edit() {
-    const practica = this.practica();
+    const practica =
+      this.practica();
 
     if (practica) {
       this.router.navigate([
@@ -82,15 +99,20 @@ export class PracticeDetail implements OnInit {
   }
 
   async closePractice() {
-    const practica = this.practica();
+    const practica =
+      this.practica();
 
-    if (!practica || practica.estado !== 'ACTIVA') {
+    if (
+      !practica ||
+      practica.estado !== 'ACTIVA'
+    ) {
       return;
     }
 
-    const confirmed = window.confirm(
-      '¿Está seguro de que desea cerrar esta práctica?'
-    );
+    const confirmed =
+      window.confirm(
+        '¿Está seguro de que desea cerrar esta práctica?'
+      );
 
     if (!confirmed) {
       return;
@@ -98,7 +120,9 @@ export class PracticeDetail implements OnInit {
 
     try {
       await this.api.patch(
-        '/practices/' + practica.id_practica + '/status',
+        '/practices/' +
+          practica.id_practica +
+          '/status',
         {
           estado: 'CERRADA',
         }
@@ -115,6 +139,8 @@ export class PracticeDetail implements OnInit {
   }
 
   back() {
-    this.router.navigate(['/practicas']);
+    this.router.navigate([
+      '/practicas',
+    ]);
   }
 }

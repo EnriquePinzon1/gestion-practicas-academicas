@@ -1,0 +1,155 @@
+<section class="panel section-gap">
+  <div class="panel-heading">
+    <h2>Visitas del docente</h2>
+    <p>
+      Visitas a la institución donde el estudiante realiza la práctica.
+      El estudiante ve solo la fecha y la descripción; las observaciones
+      son internas.
+    </p>
+  </div>
+
+  <div class="observations-body">
+
+    @if (errorMessage()) {
+      <div class="alert error">{{ errorMessage() }}</div>
+    }
+
+    @if (successMessage()) {
+      <div class="alert success">{{ successMessage() }}</div>
+    }
+
+    @if (loading()) {
+      <p class="muted ui-loader">Cargando visitas...</p>
+    } @else {
+
+      @if (assignment(); as a) {
+        <p class="visit-place">
+          <strong>{{ a.institucion }}</strong>
+          · {{ a.practica }} · Período {{ a.periodo_academico }}
+        </p>
+      }
+
+      @if (canRegister()) {
+        <form class="observation-form" (ngSubmit)="save()">
+          <label>
+            <span>Fecha de la visita</span>
+            <input
+              type="date"
+              name="fecha"
+              [min]="minDate() ?? ''"
+              [max]="maxDate()"
+              [ngModel]="fechaInput()"
+              (ngModelChange)="fechaInput.set($event)"
+            />
+          </label>
+
+          <label>
+            <span>
+              {{ editingId() ? 'Corregir descripción' : 'Descripción de la visita' }}
+            </span>
+            <textarea
+              name="descripcion"
+              rows="3"
+              [maxlength]="maxLength"
+              placeholder="Con quién se reunió, qué se revisó, acuerdos..."
+              [ngModel]="descripcionInput()"
+              (ngModelChange)="descripcionInput.set($event)"
+            ></textarea>
+            <small class="counter">{{ descripcionInput().length }} / {{ maxLength }}</small>
+          </label>
+
+          <label>
+            <span>Observaciones internas (opcional)</span>
+            <textarea
+              name="observaciones"
+              rows="2"
+              [maxlength]="maxLength"
+              placeholder="Solo las ven usted y el coordinador"
+              [ngModel]="observacionesInput()"
+              (ngModelChange)="observacionesInput.set($event)"
+            ></textarea>
+          </label>
+
+          <div class="form-actions">
+            @if (editingId()) {
+              <button
+                type="button"
+                class="secondary-button"
+                [disabled]="saving()"
+                (click)="resetForm()"
+              >
+                Cancelar
+              </button>
+            }
+
+            <button
+              type="submit"
+              class="primary-button"
+              [class.ui-loading]="saving()"
+              [disabled]="saving()"
+            >
+              {{
+                saving()
+                  ? 'Guardando...'
+                  : editingId()
+                    ? 'Guardar corrección'
+                    : 'Registrar visita'
+              }}
+            </button>
+          </div>
+        </form>
+      } @else {
+        <div class="readonly-note">
+          {{ blockReason() ?? 'No es posible registrar visitas.' }}
+        </div>
+      }
+
+      @if (visits().length === 0) {
+        <div class="empty-state compact">
+          <h3>Sin visitas</h3>
+          <p>Aún no hay visitas registradas.</p>
+        </div>
+      } @else {
+        <ol class="observation-list">
+          @for (v of visits(); track v.id_visita) {
+            <li [class.editing]="editingId() === v.id_visita">
+              <div class="observation-head">
+                <strong>{{ v.fecha | date: 'dd/MM/yyyy' : 'UTC' }}</strong>
+
+                <small>
+                  @if (v.editada) {
+                    Corregida {{ v.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                  } @else {
+                    Registrada {{ v.creado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                  }
+                  @if (!v.propia) {
+                    · otro docente
+                  }
+                </small>
+
+                @if (canRegister() && v.propia) {
+                  <button
+                    type="button"
+                    class="link-button"
+                    [disabled]="saving()"
+                    (click)="edit(v)"
+                  >
+                    Corregir
+                  </button>
+                }
+              </div>
+
+              <p>{{ v.descripcion }}</p>
+
+              @if (v.observaciones) {
+                <p class="internal-note">
+                  <span>Observaciones internas:</span> {{ v.observaciones }}
+                </p>
+              }
+            </li>
+          }
+        </ol>
+      }
+    }
+  </div>
+</section>
