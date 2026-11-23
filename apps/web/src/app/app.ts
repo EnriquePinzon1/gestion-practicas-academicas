@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import {
   NavigationEnd,
   Router,
@@ -7,7 +7,20 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter } from 'rxjs';
+
 import { supabase } from './core/supabase.client';
+import { ApiService } from './core/services/api.service';
+
+interface AuthProfile {
+  authenticated: boolean;
+  auth_user_id: string;
+  id_usuario: number;
+  nombres: string;
+  apellidos: string;
+  correo: string;
+  estado: string;
+  rol: string;
+}
 
 @Component({
   selector: 'app-root',
@@ -23,7 +36,19 @@ import { supabase } from './core/supabase.client';
 export class App {
   isLoginPage = signal(false);
 
-  constructor(private readonly router: Router) {
+  // Aviso global mientras el servidor (Render) despierta.
+  readonly serverWaking = inject(ApiService).serverWaking;
+
+  userRole = signal<string | null>(null);
+  userName = signal('');
+  userInitial = signal('');
+
+  private loadingProfile = false;
+
+  constructor(
+    private readonly router: Router,
+    private readonly api: ApiService
+  ) {
     this.updateLayout(this.router.url);
 
     this.router.events
@@ -34,18 +59,106 @@ export class App {
         )
       )
       .subscribe((event) => {
-        this.updateLayout(event.urlAfterRedirects);
+        this.updateLayout(
+          event.urlAfterRedirects
+        );
+
+        this.revealActiveLink();
       });
   }
 
+  // En móvil el menú es una fila con scroll horizontal:
+  // centra el enlace activo para que se vea dónde se está.
+  // Solo mueve el scroll del menú, nunca el de la página.
+  private revealActiveLink() {
+    setTimeout(() => {
+      const nav =
+        document.querySelector<HTMLElement>('.navigation');
+
+      const active =
+        nav?.querySelector<HTMLElement>('a.active');
+
+      if (
+        !nav ||
+        !active ||
+        nav.scrollWidth <= nav.clientWidth
+      ) {
+        return;
+      }
+
+      const navRect = nav.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+
+      nav.scrollLeft +=
+        activeRect.left -
+        navRect.left -
+        (navRect.width - activeRect.width) / 2;
+    });
+  }
+
   private updateLayout(url: string) {
-    this.isLoginPage.set(
-      url.startsWith('/login')
-    );
+    const loginPage =
+  url.startsWith('/login') ||
+  url.startsWith('/reset-password');
+
+    this.isLoginPage.set(loginPage);
+
+    if (
+      !loginPage &&
+      url !== '/' &&
+      !this.userRole() &&
+      !this.loadingProfile
+    ) {
+      void this.loadProfile();
+    }
+  }
+
+  private async loadProfile() {
+    this.loadingProfile = true;
+
+    try {
+      const profile =
+        await this.api.get<AuthProfile>(
+          '/auth/me'
+        );
+
+      this.userRole.set(profile.rol);
+
+      // Los enlaces del rol aparecen ahora.
+      this.revealActiveLink();
+
+      this.userName.set(
+        `${profile.nombres} ${profile.apellidos}`
+      );
+
+      this.userInitial.set(
+        profile.nombres
+          .charAt(0)
+          .toUpperCase()
+      );
+    } catch (error) {
+      console.error(
+        'No fue posible cargar el perfil:',
+        error
+      );
+
+      this.userRole.set(null);
+      this.userName.set('');
+      this.userInitial.set('');
+    } finally {
+      this.loadingProfile = false;
+    }
   }
 
   async logout() {
     await supabase.auth.signOut();
-    await this.router.navigate(['/login']);
+
+    this.userRole.set(null);
+    this.userName.set('');
+    this.userInitial.set('');
+
+    await this.router.navigate([
+      '/login',
+    ]);
   }
 }

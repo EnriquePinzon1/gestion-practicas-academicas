@@ -1,0 +1,173 @@
+<section class="panel section-gap">
+  <div class="panel-heading">
+    <h2>Revisión de evidencias</h2>
+    <p>
+      Archivos adjuntos por el estudiante en sus entregas. Se revisan
+      cuando la entrega es definitiva (actividad cerrada o plazo vencido).
+    </p>
+  </div>
+
+  <div class="observations-body">
+
+    @if (errorMessage()) {
+      <div class="alert error">{{ errorMessage() }}</div>
+    }
+
+    @if (successMessage()) {
+      <div class="alert success">{{ successMessage() }}</div>
+    }
+
+    @if (loading()) {
+      <p class="muted ui-loader">Cargando evidencias...</p>
+    } @else if (evidences().length === 0) {
+      <div class="empty-state compact">
+        <h3>Sin evidencias</h3>
+        <p>El estudiante aún no ha adjuntado evidencias en este grupo.</p>
+      </div>
+    } @else {
+
+      <div class="filter-chips" role="group" aria-label="Filtrar evidencias">
+        <button
+          type="button"
+          [class.active]="filter() === 'TODAS'"
+          (click)="setFilter('TODAS')"
+        >
+          Todas ({{ counts().total }})
+        </button>
+        <button
+          type="button"
+          [class.active]="filter() === 'PENDIENTES'"
+          (click)="setFilter('PENDIENTES')"
+        >
+          Pendientes ({{ counts().pendientes }})
+        </button>
+        <button
+          type="button"
+          [class.active]="filter() === 'REVISADAS'"
+          (click)="setFilter('REVISADAS')"
+        >
+          Revisadas ({{ counts().revisadas }})
+        </button>
+      </div>
+
+      @if (groups().length === 0) {
+        <div class="empty-state compact">
+          <p>
+            {{ filter() === 'PENDIENTES'
+              ? 'No hay evidencias pendientes de revisión.'
+              : 'Aún no hay evidencias revisadas.' }}
+          </p>
+        </div>
+      }
+
+      @for (group of groups(); track group.id_actividad) {
+        <div class="activity-group">
+          <h3>{{ group.titulo }}</h3>
+
+          <ul class="evidence-review-list">
+            @for (ev of group.items; track ev.id_evidencia) {
+              <li [class.editing]="reviewingId() === ev.id_evidencia">
+                <div class="evidence-row">
+                  <div class="evidence-info">
+                    <span class="name" [title]="ev.nombre_archivo">
+                      {{ ev.nombre_archivo }}
+                    </span>
+                    <small>
+                      {{ tamano(ev.tamano_bytes) }} ·
+                      Subida {{ ev.subido_en | date: 'dd/MM/yyyy, HH:mm' }}
+                    </small>
+                  </div>
+
+                  <span class="status-pill" [class.done]="ev.revisada">
+                    {{ ev.revisada ? 'Revisada' : 'Pendiente' }}
+                  </span>
+                </div>
+
+                @if (ev.revisada && reviewingId() !== ev.id_evidencia) {
+                  <div class="review-note">
+                    <small>
+                      Revisada {{ ev.revisada_en | date: 'dd/MM/yyyy, HH:mm' }}
+                    </small>
+                    @if (ev.observacion_revision) {
+                      <p>{{ ev.observacion_revision }}</p>
+                    } @else {
+                      <p class="muted">Sin observación.</p>
+                    }
+                  </div>
+                }
+
+                @if (reviewingId() === ev.id_evidencia) {
+                  <form class="observation-form review-form" (ngSubmit)="saveReview(ev)">
+                    <label>
+                      <span>Observación (opcional)</span>
+                      <textarea
+                        name="observacion"
+                        rows="3"
+                        [maxlength]="maxLength"
+                        placeholder="Calidad del archivo, pertinencia, aspectos por mejorar..."
+                        [ngModel]="observacionInput()"
+                        (ngModelChange)="observacionInput.set($event)"
+                      ></textarea>
+                    </label>
+
+                    <div class="form-actions">
+                      <small>{{ observacionInput().length }} / {{ maxLength }}</small>
+                      <button
+                        type="button"
+                        class="secondary-button"
+                        [disabled]="saving()"
+                        (click)="cancelReview()"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        class="primary-button"
+                        [class.ui-loading]="saving()"
+                        [disabled]="saving()"
+                      >
+                        {{
+                          saving()
+                            ? 'Guardando...'
+                            : ev.revisada
+                              ? 'Guardar corrección'
+                              : 'Finalizar revisión'
+                        }}
+                      </button>
+                    </div>
+                  </form>
+                } @else {
+                  <div class="evidence-actions">
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      [disabled]="downloadingId() !== null"
+                      (click)="download(ev)"
+                    >
+                      {{ downloadingId() === ev.id_evidencia ? 'Abriendo...' : 'Ver archivo' }}
+                    </button>
+
+                    @if (ev.puede_revisar) {
+                      <button
+                        type="button"
+                        class="primary-button"
+                        [disabled]="saving() || reviewingId() !== null"
+                        (click)="startReview(ev)"
+                      >
+                        {{ ev.revisada ? 'Corregir revisión' : 'Revisar' }}
+                      </button>
+                    } @else {
+                      <small class="muted">
+                        Se revisa cuando la actividad cierre o venza su plazo.
+                      </small>
+                    }
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        </div>
+      }
+    }
+  </div>
+</section>

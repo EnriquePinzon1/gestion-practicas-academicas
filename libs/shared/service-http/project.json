@@ -1,0 +1,9 @@
+{
+  "name": "service-http",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/shared/service-http/src",
+  "projectType": "library",
+  "tags": [],
+  "// targets": "to see all targets run: nx show project service-http --web",
+  "targets": {}
+}

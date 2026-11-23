@@ -1,0 +1,151 @@
+// Revisión de evidencias del Docente Asesor (CU7, BS2).
+// Base visual: follow-up.scss y tutor-observations.scss.
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+
+  button {
+    padding: 7px 14px;
+    border: 1px solid #d5dce5;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #475569;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+
+    &.active {
+      border-color: #1d5d91;
+      background: #1d5d91;
+      color: #ffffff;
+    }
+  }
+}
+
+.activity-group {
+  & + & {
+    margin-top: 20px;
+  }
+
+  h3 {
+    margin: 0 0 10px;
+    color: #10233f;
+    font-size: 16px;
+    overflow-wrap: anywhere;
+  }
+}
+
+.evidence-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+
+  li {
+    padding: 14px 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    min-width: 0;
+
+    &.editing {
+      border-color: #f59e0b;
+      background: #fffbeb;
+    }
+  }
+}
+
+.evidence-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.evidence-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+
+  .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    color: #111827;
+  }
+
+  small {
+    color: #64748b;
+    font-size: 14px;
+  }
+}
+
+.status-pill {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 600;
+
+  &.done {
+    background: #dcfce7;
+    color: #166534;
+  }
+}
+
+.review-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid #16a34a;
+  border-radius: 6px;
+  background: #ffffff;
+
+  small {
+    color: #64748b;
+    font-size: 13px;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: #1e293b;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.evidence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+
+  .primary-button,
+  .secondary-button {
+    padding: 8px 14px;
+  }
+}
+
+.review-form {
+  margin: 12px 0 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.secondary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+:host {
+  display: block;
+  margin-top: 24px;
+}

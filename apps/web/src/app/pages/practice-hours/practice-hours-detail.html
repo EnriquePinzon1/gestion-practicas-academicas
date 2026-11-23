@@ -1,0 +1,265 @@
+<section class="follow-up-page">
+
+  <button type="button" class="back-link" (click)="back()">
+    ← Volver a horas de práctica
+  </button>
+
+  @if (loading()) {
+    <div class="loading ui-loader">Cargando horas de la asignación...</div>
+  } @else if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  } @else if (detail(); as d) {
+
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">Horas de práctica</span>
+        <h1>{{ studentName(d) }}</h1>
+        <p>
+          {{ d.estudiante?.codigo_estudiante ?? 'Sin código' }}
+          @if (d.estudiante?.correo) {
+            · {{ d.estudiante.correo }}
+          }
+          @if (d.estudiante?.estado === 'INACTIVO') {
+            · <span class="inactive-mark">Inactivo</span>
+          }
+        </p>
+      </div>
+
+      <span [class]="'status status-' + d.estado.toLowerCase()">
+        {{ statusLabel(d.estado) }}
+      </span>
+    </header>
+
+    <section class="panel section-gap">
+      <div class="panel-heading">
+        <h2>Práctica</h2>
+        <p>Asignación sobre la que se registran las horas.</p>
+      </div>
+
+      <dl class="info-grid">
+        <div>
+          <dt>Práctica</dt>
+          <dd>{{ d.practica }}</dd>
+        </div>
+        <div>
+          <dt>Institución</dt>
+          <dd>{{ d.institucion }}</dd>
+        </div>
+        <div>
+          <dt>Período académico</dt>
+          <dd>{{ d.periodo_academico }}</dd>
+        </div>
+        <div>
+          <dt>Fecha de inicio</dt>
+          <dd>
+            @if (d.fecha_inicio) {
+              {{ d.fecha_inicio | date: 'dd/MM/yyyy' : 'UTC' }}
+            } @else {
+              —
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Fecha de finalización</dt>
+          <dd>
+            @if (d.fecha_fin) {
+              {{ d.fecha_fin | date: 'dd/MM/yyyy' : 'UTC' }}
+            } @else {
+              —
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Tutor receptor</dt>
+          <dd>
+            {{ tutorName(d) }}
+            @if (d.tutor?.cargo) {
+              <small>{{ d.tutor.cargo }}</small>
+            }
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="section-gap">
+      <app-hours-progress [summary]="d" />
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Registro de horas</h2>
+        <p>
+          {{ d.total_registros }} registro(s), del más reciente al
+          más antiguo.
+        </p>
+      </div>
+
+      <div class="observations-body">
+
+        @if (successMessage()) {
+          <div class="alert success">{{ successMessage() }}</div>
+        }
+
+        @if (d.puede_registrar) {
+          <form class="observation-form hours-form" (ngSubmit)="save()">
+
+            @if (formError()) {
+              <div class="alert error">{{ formError() }}</div>
+            }
+
+            <div class="hours-form-row">
+              <label>
+                <span>Fecha</span>
+                <input
+                  type="date"
+                  name="fecha"
+                  [min]="d.fecha_minima"
+                  [max]="d.fecha_maxima"
+                  [ngModel]="fechaInput()"
+                  (ngModelChange)="fechaInput.set($event)"
+                />
+              </label>
+
+              <label>
+                <span>Horas</span>
+                <input
+                  type="number"
+                  name="horas"
+                  min="0.1"
+                  step="0.5"
+                  [max]="d.horas_maximas_registro"
+                  placeholder="Ej. 4"
+                  [ngModel]="horasInput()"
+                  (ngModelChange)="horasInput.set($event)"
+                />
+              </label>
+            </div>
+
+            <label>
+              <span>Observación (opcional)</span>
+              <textarea
+                name="observacion"
+                rows="2"
+                [maxlength]="maxLength"
+                placeholder="Actividades realizadas, planilla o soporte de las horas..."
+                [ngModel]="observacionInput()"
+                (ngModelChange)="observacionInput.set($event)"
+              ></textarea>
+            </label>
+
+            <div class="form-actions">
+              <small>{{ observacionInput().length }} / {{ maxLength }}</small>
+
+              @if (editingId()) {
+                <button
+                  type="button"
+                  class="secondary-button"
+                  [disabled]="saving()"
+                  (click)="resetForm()"
+                >
+                  Cancelar
+                </button>
+              }
+
+              <button
+                type="submit"
+                class="primary-button"
+                [class.ui-loading]="saving()"
+                [disabled]="saving()"
+              >
+                {{
+                  saving()
+                    ? 'Guardando...'
+                    : editingId()
+                      ? 'Guardar corrección'
+                      : 'Registrar horas'
+                }}
+              </button>
+            </div>
+          </form>
+        } @else {
+          @if (formError()) {
+            <div class="alert error">{{ formError() }}</div>
+          }
+
+          <div class="readonly-note">
+            Las horas se registran mientras la práctica está
+            <strong>en curso</strong>. Esta asignación está
+            {{ statusLabel(d.estado).toLowerCase() }}, por lo que
+            el registro queda en solo lectura.
+          </div>
+        }
+
+        @if (d.registros.length === 0) {
+          <div class="empty-state compact">
+            <h3>Sin horas registradas</h3>
+            <p>Aún no existen horas registradas para esta práctica.</p>
+          </div>
+        } @else {
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th class="num">Horas</th>
+                  <th>Observación</th>
+                  <th>Registro</th>
+                  @if (d.puede_registrar) {
+                    <th></th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (r of d.registros; track r.id_registro) {
+                  <tr [class.editing-row]="editingId() === r.id_registro">
+                    <td class="nowrap">
+                      {{ r.fecha | date: 'dd/MM/yyyy' : 'UTC' }}
+                    </td>
+                    <td class="num strong">{{ format(r.horas) }}</td>
+                    <td class="observation-cell">
+                      @if (r.observacion) {
+                        {{ r.observacion }}
+                      } @else {
+                        <span class="muted">—</span>
+                      }
+                    </td>
+                    <td class="nowrap record-meta">
+                      @if (wasEdited(r)) {
+                        Corregido {{ r.actualizado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                      } @else {
+                        {{ r.creado_en | date: 'dd/MM/yyyy, HH:mm' }}
+                      }
+                    </td>
+                    @if (d.puede_registrar) {
+                      <td class="nowrap">
+                        <div class="row-actions">
+                          <button
+                            type="button"
+                            class="link-button"
+                            [disabled]="saving()"
+                            (click)="edit(r)"
+                          >
+                            Corregir
+                          </button>
+                          <button
+                            type="button"
+                            class="link-button danger"
+                            [disabled]="saving()"
+                            (click)="remove(r)"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+</section>

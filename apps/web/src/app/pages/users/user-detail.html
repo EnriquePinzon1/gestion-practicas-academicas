@@ -2,7 +2,7 @@
   <div class="card">
 
     @if (loading()) {
-      <p>Cargando información...</p>
+      <p class="ui-loader">Cargando información...</p>
     }
 
     @if (errorMessage()) {
@@ -97,6 +97,23 @@
               <span>Semestre</span>
               <strong>
                 {{ user.semestre }}
+              </strong>
+            </div>
+
+          </div>
+        </section>
+      }
+
+      @if (user.rol === 'TUTOR_RECEPTOR') {
+        <section>
+          <h2>Información del tutor receptor</h2>
+
+          <div class="grid">
+
+            <div class="item">
+              <span>Cargo</span>
+              <strong>
+                {{ user.cargo || 'No registrado' }}
               </strong>
             </div>
 

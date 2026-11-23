@@ -1,0 +1,178 @@
+<section class="follow-up-page">
+
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Estudiante</span>
+      <h1>Mi seguimiento</h1>
+      <p>
+        Progreso de las horas de tu práctica académica,
+        registradas por la Coordinación de Prácticas.
+      </p>
+    </div>
+  </header>
+
+  @if (errorMessage()) {
+    <div class="alert error">{{ errorMessage() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="loading ui-loader">Cargando tu seguimiento...</div>
+  } @else if (!errorMessage() && practices().length === 0) {
+    <section class="panel">
+      <div class="empty-state">
+        <h3>Sin práctica asignada</h3>
+        <p>Actualmente no tiene una práctica académica asignada.</p>
+      </div>
+    </section>
+  } @else if (selected(); as p) {
+
+    @if (practices().length > 1) {
+      <section class="filters practice-selector">
+        <div class="field">
+          <label for="practice">Práctica</label>
+          <select
+            id="practice"
+            [ngModel]="selectedId()"
+            (ngModelChange)="select($event)"
+          >
+            @for (option of practices(); track option.id_asignacion) {
+              <option [ngValue]="option.id_asignacion">
+                {{ optionLabel(option) }}
+              </option>
+            }
+          </select>
+        </div>
+      </section>
+    }
+
+    <section class="panel section-gap">
+      <div class="panel-heading heading-with-status">
+        <div>
+          <h2>{{ p.practica }}</h2>
+          <p>Período académico {{ p.periodo_academico }}</p>
+        </div>
+
+        <span [class]="'status status-' + p.estado.toLowerCase()">
+          {{ statusLabel(p.estado) }}
+        </span>
+      </div>
+
+      <dl class="info-grid">
+        <div>
+          <dt>Institución</dt>
+          <dd>{{ p.institucion }}</dd>
+        </div>
+        <div>
+          <dt>Fecha de inicio</dt>
+          <dd>
+            @if (p.fecha_inicio) {
+              {{ p.fecha_inicio | date: 'dd/MM/yyyy' : 'UTC' }}
+            } @else {
+              —
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Fecha de finalización</dt>
+          <dd>
+            @if (p.fecha_fin) {
+              {{ p.fecha_fin | date: 'dd/MM/yyyy' : 'UTC' }}
+            } @else {
+              —
+            }
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    @if (p.estado === 'ASIGNADA') {
+      <div class="readonly-note section-gap">
+        Tu práctica está <strong>asignada</strong> y aún no ha
+        iniciado. Las horas se registran cuando esté en curso.
+      </div>
+    }
+
+    <section class="section-gap">
+      <app-hours-progress [summary]="p" />
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Detalle de horas</h2>
+        <p>Registros de la Coordinación, del más reciente al más antiguo.</p>
+      </div>
+
+      @if (p.registros.length === 0) {
+        <div class="empty-state">
+          <h3>0 horas realizadas</h3>
+          <p>Aún no existen horas registradas para esta práctica.</p>
+        </div>
+      } @else {
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th class="num">Horas</th>
+                <th>Observación</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of p.registros; track r.id_registro) {
+                <tr>
+                  <td class="nowrap">
+                    {{ r.fecha | date: 'dd/MM/yyyy' : 'UTC' }}
+                  </td>
+                  <td class="num strong">{{ format(r.horas) }}</td>
+                  <td class="observation-cell">
+                    @if (r.observacion) {
+                      {{ r.observacion }}
+                    } @else {
+                      <span class="muted">—</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="panel visits-panel">
+      <div class="panel-heading">
+        <h2>Visitas del docente asesor</h2>
+        <p>Visitas a la institución donde realizas la práctica.</p>
+      </div>
+
+      @if (p.visitas.length === 0) {
+        <div class="empty-state">
+          <h3>Sin visitas</h3>
+          <p>Aún no hay visitas registradas para esta práctica.</p>
+        </div>
+      } @else {
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Descripción</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (v of p.visitas; track v.id_visita) {
+                <tr>
+                  <td class="nowrap">
+                    {{ v.fecha | date: 'dd/MM/yyyy' : 'UTC' }}
+                  </td>
+                  <td class="observation-cell">{{ v.descripcion }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+
+</section>

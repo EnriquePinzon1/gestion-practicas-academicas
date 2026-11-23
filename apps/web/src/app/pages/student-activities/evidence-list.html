@@ -1,0 +1,51 @@
+@if (evidencias().length === 0) {
+  <p class="empty">Sin evidencias adjuntas.</p>
+} @else {
+  <ul>
+    @for (ev of evidencias(); track ev.id_evidencia) {
+      <li>
+        <div class="info">
+          <span class="name" [title]="ev.nombre_archivo">
+            {{ ev.nombre_archivo }}
+          </span>
+          <small>
+            {{ tamano(ev.tamano_bytes) }} ·
+            {{ ev.subido_en | date: 'dd/MM/yyyy, HH:mm' }}
+          </small>
+
+          @if (ev.revisada !== undefined) {
+            <div class="review" [class.done]="ev.revisada">
+              <span class="review-badge">
+                {{ ev.revisada ? '✓ Revisada por el docente' : 'Pendiente de revisión' }}
+              </span>
+              @if (ev.revisada && ev.observacion_revision) {
+                <p>{{ ev.observacion_revision }}</p>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="buttons">
+          <button
+            type="button"
+            [disabled]="busyId() !== null"
+            (click)="download.emit(ev)"
+          >
+            Descargar
+          </button>
+
+          @if (canRemove()) {
+            <button
+              type="button"
+              class="danger"
+              [disabled]="busyId() !== null"
+              (click)="remove.emit(ev)"
+            >
+              {{ busyId() === ev.id_evidencia ? 'Eliminando...' : 'Eliminar' }}
+            </button>
+          }
+        </div>
+      </li>
+    }
+  </ul>
+}

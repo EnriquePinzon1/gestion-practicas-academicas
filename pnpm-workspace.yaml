@@ -1,6 +1,7 @@
 autoInstallPeers: true
 allowBuilds:
   '@parcel/watcher': true
+  core-js: false
   core-js-pure: true
   esbuild: false
   lmdb: false
